@@ -1,0 +1,15 @@
+[package]
+name = "pyoframe"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "pyoframe"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = {version = "0.18.3", features = ["extension-module"]}
+polars = { version = "0.30.0", features = ["repeat_by", "arange", "horizontal_concat"] }
+polars-lazy = "0.30.0"
+pyo3-polars = { version = "0.4.0", features = ["lazy"] }
