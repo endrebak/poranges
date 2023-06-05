@@ -1,9 +1,10 @@
 use std::ops::Add;
 use polars::prelude::*;
+use polars_lazy::prelude::*;
 
-pub struct OverlapResult {
-    pub idx1: Series,
-    pub idx2: Series
+pub struct OverlapIdxs {
+    pub(crate) idx1: Series,
+    pub(crate) idx2: Series
 }
 
 pub fn overlap_idxes(
@@ -14,9 +15,9 @@ pub fn overlap_idxes(
     starts2: &str,
     ends2: &str,
     closed: bool,
-) -> Result<OverlapResult, PolarsError> {
-    let df1 = df1.with_row_count("__idx__", None)?.sort([starts1, ends1], false)?;
-    let df2 = df2.with_row_count("__idx__", None)?.sort([starts2, ends2], false)?;
+) -> Result<OverlapIdxs, PolarsError> {
+    let df1 = df1.with_row_count("__idx__1", None)?.sort([starts1, ends1], false)?;
+    let df2 = df2.with_row_count("__idx__2", None)?.sort([starts2, ends2], false)?;
 
     let sorted_side = if closed { SearchSortedSide::Right } else { SearchSortedSide::Left };
 
@@ -38,15 +39,31 @@ pub fn overlap_idxes(
 
     let match2in1mask = ends2in1.u32()?.gt(starts2in1.u32()?);
     let match1in2mask = ends1in2.u32()?.gt(starts1in2.u32()?);
-    println!("df1: {}", df1);
-    println!("match2in1mask: {}", match2in1mask.into_series());
-    println!("df2: {}", df2);
-    println!("match1in2mask: {}", match1in2mask.into_series());
+
+    let reps1 = repeat_df_by_matches(
+        &df1,
+        &starts2in1,
+        &ends2in1,
+    )?;
+    // println!("reps: {}", reps1);
+    let reps2 = repeat_df_by_matches(
+        &df2,
+        &starts1in2,
+        &ends1in2,
+    )?;
+    // println!("reps: {}", reps2);
+
+    // Below we want to get
+    let idx = arange_multi(&starts2in1, &ends2in1)?;
+    println!("idx: {}", idx);
+
+    let idx2 = arange_multi(&starts1in2, &ends1in2)?;
+    println!("idx2: {}", idx2);
 
     Ok(
-        OverlapResult {
-            idx1: Series::new("", &[0]),
-            idx2: Series::new("", &[0])
+        OverlapIdxs {
+            idx1: df1.column("__idx__1")?.filter( & match2in1mask)?,
+            idx2: df2.column("__idx__2")?.filter( & match1in2mask)?,
         }
     )
 }
@@ -79,6 +96,24 @@ fn arange_multi(
     Ok(_lengths_cumsum.add(_cat_starts))
 }
 
+
+fn repeat_df_by_matches(
+    df: &DataFrame,
+    matching_starts: &Series,
+    matching_ends: &Series,
+) -> Result<DataFrame, PolarsError> {
+    let nb_repeats = matching_ends.subtract(matching_starts)?.into_series();
+    Ok(
+        df.clone().lazy().select(
+            [
+                all().repeat_by(
+                    lit(nb_repeats)
+                ).explode().drop_nulls()
+            ]
+        ).collect()?
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,11 +141,12 @@ mod tests {
             "end2" => &[2, 7]
         )?;
         let res = overlap_idxes(f1, f2, "start", "end", "start2", "end2", false)?;
-        println!("{:?}", res.idx1);
+        println!("{}", res.idx1);
+        println!("{}", res.idx2);
         panic!("");
 
         assert_eq!(
-            res.idx1, Series::new("", &[2])
+            0, 1
         );
         Ok(())
     }

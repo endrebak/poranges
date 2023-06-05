@@ -11,6 +11,8 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.optional-dependencies]
+dev = ["bioframe", "pytest"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
