@@ -15,6 +15,12 @@ ends1 = [6, 9, 10, 7]
 starts2 = [6, 3, 1]
 ends2 = [7, 8, 2]
 
+# starts1 = [3, 8, 5]
+# ends1 = [6, 9, 7]
+#
+# starts2 = [1, 6]
+# ends2 = [2, 7]
+
 df = pl.DataFrame(
     {
         "starts1": starts1,
@@ -33,7 +39,7 @@ def test_overlap_indices():
     print(df)
 
     print(df2)
-    idxes = pf.overlap_indices(df, df2)
+    # idxes = pf.overlap_indices(df, df2)
     result = overlap_intervals(
         np.array(starts1),
         np.array(ends1),
@@ -41,8 +47,8 @@ def test_overlap_indices():
         np.array(ends2)
     )
     print("--- pyoframe ---")
-    print(idxes.idx1)
-    print(idxes.idx2)
+    # print(idxes.idx1)
+    # print(idxes.idx2)
     print("--- bioframe ---")
     print(result)
     assert 0
@@ -65,17 +71,23 @@ def overlap_intervals(starts1, ends1, starts2, ends2, closed=False, sort=False):
     order2 = np.lexsort([ends2, starts2])
     starts1, ends1, ids1 = starts1[order1], ends1[order1], ids1[order1]
     starts2, ends2, ids2 = starts2[order2], ends2[order2], ids2[order2]
+    print(starts2)
+    print(ends2)
 
     # Find interval overlaps
     match_2in1_starts = np.searchsorted(starts2, starts1, "left")
     match_2in1_ends = np.searchsorted(starts2, ends1, "right" if closed else "left")
     # "right" is intentional here to avoid duplication
     match_1in2_starts = np.searchsorted(starts1, starts2, "right")
+    print(match_2in1_starts)
     match_1in2_ends = np.searchsorted(starts1, ends2, "right" if closed else "left")
 
     # Ignore self-overlaps
     match_2in1_mask = match_2in1_ends > match_2in1_starts
     match_1in2_mask = match_1in2_ends > match_1in2_starts
+    print(match_2in1_mask)
+    print(match_1in2_mask)
+    print(ids2)
     match_2in1_starts, match_2in1_ends = (
         match_2in1_starts[match_2in1_mask],
         match_2in1_ends[match_2in1_mask],
@@ -84,11 +96,15 @@ def overlap_intervals(starts1, ends1, starts2, ends2, closed=False, sort=False):
         match_1in2_starts[match_1in2_mask],
         match_1in2_ends[match_1in2_mask],
     )
-    print(- match_2in1_starts + match_2in1_ends)
-    print("first arange multi")
-    print(arange_multi(match_2in1_starts, match_2in1_ends))
+    # print(match_1in2_starts)
+    # print(match_1in2_ends)
+    # print(- match_2in1_starts + match_2in1_ends)
+    # print("first arange multi")
+    # print(ids2[arange_multi(match_2in1_starts, match_2in1_ends)])
     print("second arange multi")
-    print(arange_multi(match_1in2_starts, match_1in2_ends))
+    print(match_2in1_starts, match_2in1_ends)
+    print(arange_multi(match_2in1_starts, match_2in1_ends))
+    print(ids1[arange_multi(match_2in1_starts, match_2in1_ends)])
 
 
     return np.block(
