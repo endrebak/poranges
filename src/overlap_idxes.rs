@@ -1,11 +1,7 @@
 use std::ops::Add;
 use polars::prelude::*;
 use polars_lazy::prelude::*;
-
-pub struct OverlapIdxs {
-    pub(crate) idx1: Series,
-    pub(crate) idx2: Series
-}
+use polars::functions::hor_concat_df;
 
 pub fn overlap_idxes(
     df1: &DataFrame,
@@ -15,11 +11,11 @@ pub fn overlap_idxes(
     starts2: &str,
     ends2: &str,
     closed: bool,
-) -> Result<OverlapIdxs, PolarsError> {
-    let df1_sorted = df1.with_row_count("__idx__1", None)?.sort([starts1, ends1], false)?;
-    let df2_sorted = df2.with_row_count("__idx__2", None)?.sort([starts2, ends2], false)?;
-    println!("df1: {}", df1_sorted);
-    println!("df2: {}", df2_sorted);
+) -> Result<DataFrame, PolarsError> {
+    let df1_sorted = df1.sort([starts1, ends1], false)?;
+    let df2_sorted = df2.sort([starts2, ends2], false)?;
+    // println!("df1: {}", df1_sorted);
+    // println!("df2: {}", df2_sorted);
 
     let sorted_side = if closed { SearchSortedSide::Right } else { SearchSortedSide::Left };
 
@@ -31,77 +27,67 @@ pub fn overlap_idxes(
         df2_sorted.column(starts2)?, df1_sorted.column(ends1)?, sorted_side
     )?;
 
-    println!("starts {}", df2_sorted.column(starts2)?);
+    // println!("starts {}", df2_sorted.column(starts2)?);
     let starts1in2 = find_insertion_idxes(
         df1_sorted.column(starts1)?, df2_sorted.column(starts2)?, SearchSortedSide::Right
     )?;
-    println!("starts2in1: {}", starts2in1);
+    // println!("starts2in1: {}", starts2in1);
 
     let ends1in2 = find_insertion_idxes(
         df1_sorted.column(starts1)?, df2_sorted.column(ends2)?, sorted_side
     )?;
-    println!("ends2in1: {}", ends2in1);
+    // println!("ends2in1: {}", ends2in1);
 
     let match2in1mask = ends2in1.u32()?.gt(starts2in1.u32()?);
     let match1in2mask = ends1in2.u32()?.gt(starts1in2.u32()?);
-    println!("match1in2mask: {}", match1in2mask.clone().into_series());
-    println!("match2in1mask: {}", match2in1mask.clone().into_series());
+    // println!("match1in2mask: {}", match1in2mask.clone().into_series());
+    // println!("match2in1mask: {}", match2in1mask.clone().into_series());
 
     let match_1in2_starts = starts1in2.filter(&match1in2mask)?;
     let match_1in2_ends = ends1in2.filter(&match1in2mask)?;
 
     let match_2in1_starts = starts2in1.filter(&match2in1mask)?;
     let match_2in1_ends = ends2in1.filter(&match2in1mask)?;
-    println!("match_2in1_starts: {}", match_2in1_starts);
-    println!("match_2in1_ends: {}", match_2in1_ends);
+    // println!("match_2in1_starts: {}", match_2in1_starts);
+    // println!("match_2in1_ends: {}", match_2in1_ends);
 
     let reps1 = repeat_df_by_matches(
         &df1_sorted.filter(&match2in1mask)?,
         &match_2in1_starts,
         &match_2in1_ends,
     )?;
-    println!("reps: {}", reps1);
+    // println!("reps: {}", reps1);
     let reps2 = repeat_df_by_matches(
         &df2_sorted.filter(&match1in2mask)?,
         &match_1in2_starts,
         &match_1in2_ends,
     )?;
-    println!("reps2: {}", reps2);
+    // println!("reps2: {}", reps2);
 
     // Below we want to get
     let indices = arange_multi(&match_1in2_starts, &match_1in2_ends)?.drop_nulls();
     // println!("indices: {}", indices);
-    let taken_indices = df2_sorted.take(
+    let taken_indices = df1_sorted.take(
         indices.u32()?
     )?;
-    // println!("taken_indices: {}", taken_indices.column("__idx__2")?);
-    // let idx = df2_sorted.take(
-    //     df1_sorted.take(
-    //         indices.u32()?
-    //     )?.column("__idx__1")?.u32()?
-    // )?;
-    // println!("idx: {}", idx.drop_nulls(Some(&[starts2]))?);
+    // println!("taken_indices: {}", taken_indices);
 
-    // println!("starts1in2: {}", starts1in2);
-    // println!("ends1in2: {}", ends1in2);
-    let indices2 = arange_multi(&starts1in2, &ends1in2)?.drop_nulls();
+    let indices2 = arange_multi(&match_2in1_starts, &match_2in1_ends)?.drop_nulls();
     // println!("indices2: {}", indices2);
-    let taken_indices2 = df1_sorted.take(
+    let taken_indices2 = df2_sorted.take(
         indices2.u32()?
     )?;
-    // println!("taken_indices2: {}", taken_indices2.column("__idx__1")?);
-    // let idx2 = df1_sorted.take(
-    //     df2_sorted.take(
-    //         indices2.u32()?
-    //     )?.column("__idx__2")?.u32()?
-    // )?;
-    // println!("idx: {}", idx2.drop_nulls(Some(&[starts1]))?);
+    // println!("taken_indices2: {}", taken_indices2);
 
     Ok(
-        OverlapIdxs {
-            idx1: df1_sorted.column("__idx__1")?.filter( & match2in1mask)?,
-            idx2: df2_sorted.column("__idx__2")?.filter( & match1in2mask)?,
-        }
+        concat(
+            &[
+                hor_concat_df(&[reps1, taken_indices2])?.lazy(),
+                hor_concat_df(&[taken_indices, reps2])?.lazy(),
+            ],
+            false,
+            false
+        )?.drop_nulls(None).collect()?
     )
 }
 
@@ -166,27 +152,21 @@ mod tests {
         Ok(())
     }
 
-    // #[test]
-    // fn test_simple() -> Result<(), PolarsError> {
-    //     let f1 = &df!(
-    //         "start" => &[3, 8, 5],
-    //         "end" => &[6, 9, 7]
-    //     )?;
+    #[test]
+    fn test_simple() -> Result<(), PolarsError> {
+        let f1 = &df!(
+            "start" => &[3, 8, 5],
+            "end" => &[6, 9, 7]
+        )?;
 
-    //     let f2 = &df!(
-    //         "start2" => &[1, 6],
-    //         "end2" => &[2, 7]
-    //     )?;
-    //     let res = overlap_idxes(f1, f2, "start", "end", "start2", "end2", false)?;
-    //     println!("{}", res.idx1);
-    //     println!("{}", res.idx2);
-    //     panic!("");
-
-    //     assert_eq!(
-    //         0, 1
-    //     );
-    //     Ok(())
-    // }
+        let f2 = &df!(
+            "start2" => &[1, 6],
+            "end2" => &[2, 7]
+        )?;
+        let res = overlap_idxes(f1, f2, "start", "end", "start2", "end2", false)?;
+        // TODO: Write assertion
+        Ok(())
+    }
 
     #[test]
     fn test_join() -> Result<(), PolarsError> {
@@ -208,15 +188,10 @@ mod tests {
 
         let res = overlap_idxes(df, df2, "start", "end", "start2", "end2", false)?;
 
-        println!("{}", res.idx1);
-        println!("{}", res.idx2);
-        panic!("");
+        // TODO: Write assertion
 
-        assert_eq!(
-            0, 1
-        );
         Ok(())
-        }
+    }
 
     //     let res = join(
     //         df,

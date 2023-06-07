@@ -99,12 +99,12 @@ def overlap_intervals(starts1, ends1, starts2, ends2, closed=False, sort=False):
     # print(match_1in2_starts)
     # print(match_1in2_ends)
     # print(- match_2in1_starts + match_2in1_ends)
-    # print("first arange multi")
-    # print(ids2[arange_multi(match_2in1_starts, match_2in1_ends)])
-    print("second arange multi")
-    print(match_2in1_starts, match_2in1_ends)
+    print("first arange multi")
     print(arange_multi(match_2in1_starts, match_2in1_ends))
-    print(ids1[arange_multi(match_2in1_starts, match_2in1_ends)])
+    print(ids2[arange_multi(match_2in1_starts, match_2in1_ends)])
+    print("second arange multi")
+    print(arange_multi(match_1in2_starts, match_1in2_ends))
+    print(ids1[arange_multi(match_1in2_starts, match_1in2_ends)])
 
 
     return np.block(
