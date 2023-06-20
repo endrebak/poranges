@@ -6,6 +6,7 @@ use pyo3_polars::error::PyPolarsErr;
 use polars::prelude::*;
 
 mod overlap_idxes;
+mod split_apply_combine;
 
 #[pyfunction]
 fn overlaps(
