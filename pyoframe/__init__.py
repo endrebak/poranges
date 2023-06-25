@@ -10,12 +10,12 @@ class IntervalFrame:
         self._df = df
 
     def join(
-            self,
-            other: pl.DataFrame,
-            on: Optional[Tuple[str, str]] = None,
-            right_on: Optional[Tuple[str, str]] = None,
-            left_on: Optional[Tuple[str, str]] = None,
-            suffix: str = "_right"
+        self,
+        other: pl.DataFrame,
+        on: Optional[Tuple[str, str]] = None,
+        right_on: Optional[Tuple[str, str]] = None,
+        left_on: Optional[Tuple[str, str]] = None,
+        suffix: str = "_right",
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
@@ -26,15 +26,15 @@ class IntervalFrame:
             ends=ends,
             starts_2=starts_2,
             ends_2=ends_2,
-            suffix=suffix
+            suffix=suffix,
         )
 
     def overlap(
-            self,
-            other: pl.DataFrame,
-            on: Optional[Tuple[str, str]] = None,
-            right_on: Optional[Tuple[str, str]] = None,
-            left_on: Optional[Tuple[str, str]] = None
+        self,
+        other: pl.DataFrame,
+        on: Optional[Tuple[str, str]] = None,
+        right_on: Optional[Tuple[str, str]] = None,
+        left_on: Optional[Tuple[str, str]] = None,
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
@@ -44,18 +44,20 @@ class IntervalFrame:
             starts=starts,
             ends=ends,
             starts_2=starts_2,
-            ends_2=ends_2
+            ends_2=ends_2,
         )
 
 
 def _get_interval_columns(
-        on: Optional[Tuple[str, str]] = None,
-        right_on: Optional[Tuple[str, str]] = None,
-        left_on: Optional[Tuple[str, str]] = None,
+    on: Optional[Tuple[str, str]] = None,
+    right_on: Optional[Tuple[str, str]] = None,
+    left_on: Optional[Tuple[str, str]] = None,
 ) -> Tuple[str, str, str, str]:
     if on is None:
         if right_on is None or left_on is None:
-            raise ValueError("Either `on` or `right_on` and `left_on` must be specified.")
+            raise ValueError(
+                "Either `on` or `right_on` and `left_on` must be specified."
+            )
         starts, ends = left_on
         starts_2, ends_2 = right_on
     else:

@@ -5,7 +5,7 @@ import polars as pl
 from pyoframe.ops import (
     compute_masks,
     repeat_other,
-    repeat_frame,
+    mask_and_repeat_frame,
     apply_masks,
     add_lengths,
     find_starts_in_ends,
@@ -96,7 +96,6 @@ expected_result_starts_in_ends = pl.DataFrame(
 SCHEMA_2 = SCHEMA.copy()
 SCHEMA_2[MASK_2IN1_PROPERTY] = pl.List(pl.Boolean)
 SCHEMA_2[MASK_1IN2_PROPERTY] = pl.List(pl.Boolean)
-print(SCHEMA_2)
 
 expected_result_compute_masks = pl.DataFrame(
     {
@@ -143,9 +142,6 @@ def test_find_starts_in_ends():
     ).collect()
     with pl.Config() as cfg:
         cfg.set_tbl_cols(-1)
-        # print(result)
-        # print(expected_result_starts_in_ends)
-        # print(result == expected_result_starts_in_ends)
     assert result.frame_equal(expected_result_starts_in_ends)
 
 
@@ -158,7 +154,6 @@ def test_apply_masks():
     result = expected_result_compute_masks.with_columns(apply_masks())
     with pl.Config() as cfg:
         cfg.set_tbl_cols(-1)
-        # print(result)
     assert result.frame_equal(expected_result_apply_masks)
 
 
@@ -166,8 +161,6 @@ def test_add_lengths():
     result = expected_result_apply_masks.with_columns(add_lengths())
     with pl.Config() as cfg:
         cfg.set_tbl_cols(-1)
-        # print(list(result))
-        # print(list(result[LENGTHS_2IN1_PROPERTY].explode()))
     assert result[LENGTHS_2IN1_PROPERTY].explode().to_list() == [2, 1, 1]
 
 
@@ -175,9 +168,14 @@ def test_repeat_other():
     res = (
         expected_result_apply_masks.with_columns([pl.lit([[2, 1, 1]]).alias("diffs")])
         .lazy()
-        .select(repeat_other(["starts_2", "ends_2"], STARTS_2IN1_PROPERTY, "diffs"))
+        .select(
+            repeat_other(
+                ["starts_2", "ends_2"],
+                pl.col(STARTS_2IN1_PROPERTY).explode(),
+                pl.col("diffs").explode()
+            )
+        )
     )
-    # print(res.collect())
     res.collect().frame_equal(
         pl.DataFrame({STARTS2_PROPERTY: [1, 3, 6, 6], ENDS2_PROPERTY: [2, 8, 7, 7]})
     )
@@ -185,7 +183,7 @@ def test_repeat_other():
 
 def test_repeat_frame():
     res = expected_result_apply_masks.select(
-        repeat_frame(
+        mask_and_repeat_frame(
             [STARTS_PROPERTY, ENDS_PROPERTY],
             MASK_2IN1_PROPERTY,
             STARTS_2IN1_PROPERTY,
@@ -194,7 +192,6 @@ def test_repeat_frame():
     )
     with pl.Config() as cfg:
         cfg.set_tbl_cols(-1)
-        # print("repeat", res)
     assert res.frame_equal(
         pl.DataFrame({STARTS_PROPERTY: [0, 0, 5, 6], ENDS_PROPERTY: [6, 6, 7, 10]})
     )
@@ -212,12 +209,16 @@ def test_join():
     )
     expected = pl.DataFrame(
         [
-            pl.Series("chromosome", ['chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1'], dtype=pl.Utf8),
+            pl.Series(
+                "chromosome",
+                ["chr1", "chr1", "chr1", "chr1", "chr1", "chr1"],
+                dtype=pl.Utf8,
+            ),
             pl.Series("starts", [0, 0, 5, 6, 5, 6], dtype=pl.Int64),
             pl.Series("ends", [6, 6, 7, 10, 7, 10], dtype=pl.Int64),
             pl.Series("starts_2", [1, 3, 6, 6, 3, 3], dtype=pl.Int64),
             pl.Series("ends_2", [2, 8, 7, 7, 8, 8], dtype=pl.Int64),
-            pl.Series("genes", ['c', 'b', 'a', 'a', 'b', 'b'], dtype=pl.Utf8),
+            pl.Series("genes", ["c", "b", "a", "a", "b", "b"], dtype=pl.Utf8),
         ]
     )
 
@@ -237,7 +238,7 @@ def test_time():
                 date(2022, 2, 4),
                 date(2022, 5, 16),
                 date(2022, 3, 10),
-            ]
+            ],
         }
     )
     df_2 = pl.DataFrame(
@@ -249,17 +250,21 @@ def test_time():
             "end": [
                 date(2022, 4, 1),
                 date(2025, 4, 1),
-            ]
+            ],
         }
     )
 
     expected = pl.DataFrame(
         [
-            pl.Series("id", ['1', '2'], dtype=pl.Utf8),
+            pl.Series("id", ["1", "2"], dtype=pl.Utf8),
             pl.Series("start", [date(2022, 1, 1), date(2022, 3, 4)], dtype=pl.Date),
             pl.Series("end", [date(2022, 2, 4), date(2022, 3, 10)], dtype=pl.Date),
-            pl.Series("start_whatevz", [date(2021, 12, 31), date(2021, 12, 31)], dtype=pl.Date),
-            pl.Series("end_whatevz", [date(2022, 4, 1), date(2022, 4, 1)], dtype=pl.Date),
+            pl.Series(
+                "start_whatevz", [date(2021, 12, 31), date(2021, 12, 31)], dtype=pl.Date
+            ),
+            pl.Series(
+                "end_whatevz", [date(2022, 4, 1), date(2022, 4, 1)], dtype=pl.Date
+            ),
         ]
     )
 
@@ -268,19 +273,10 @@ def test_time():
 
 
 def test_overlap():
-    res = df.interval.overlap(
-        df2.lazy(),
-        on=("starts", "ends")
+    res = df.interval.overlap(df2.lazy(), on=("starts", "ends"))
+    a = res.collect()
+    expected = pl.DataFrame(
+        {"chromosome": ["chr1"] * 3, "starts": [0, 5, 6], "ends": [6, 7, 10]}
     )
-    print(res.collect())
-    # ┌────────────┬────────┬──────┐
-    # │ chromosome ┆ starts ┆ ends │
-    # │ ---        ┆ ---    ┆ ---  │
-    # │ str        ┆ i64    ┆ i64  │
-    # ╞════════════╪════════╪══════╡
-    # │ chr1       ┆ 0      ┆ 6    │
-    # │ chr1       ┆ 5      ┆ 7    │
-    # │ chr1       ┆ 6      ┆ 10   │
-    # └────────────┴────────┴──────┘
 
-    assert 0
+    assert a.frame_equal(expected)

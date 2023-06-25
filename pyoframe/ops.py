@@ -73,23 +73,36 @@ def apply_masks() -> List[pl.Expr]:
     ]
 
 
+def add_length(starts: str, ends: str, alias: str) -> pl.Expr:
+    return (
+        pl.col(ends)
+        .explode()
+        .sub(pl.col(starts).explode())
+        .alias(alias)
+        .implode()
+    )
+
+
 def add_lengths() -> List[pl.Expr]:
-    return [
-        pl.all(),
-        pl.col(ENDS_2IN1_PROPERTY)
-        .explode()
-        .sub(pl.col(STARTS_2IN1_PROPERTY).explode())
-        .alias(LENGTHS_2IN1_PROPERTY)
-        .implode(),
-        pl.col(ENDS_1IN2_PROPERTY)
-        .explode()
-        .sub(pl.col(STARTS_1IN2_PROPERTY).explode())
-        .alias(LENGTHS_1IN2_PROPERTY)
-        .implode(),
-    ]
+    return (
+        [
+            pl.all(),
+            add_length(STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY, LENGTHS_2IN1_PROPERTY),
+            add_length(STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, LENGTHS_1IN2_PROPERTY)
+        ]
+    )
 
 
-def repeat_frame(columns, mask, startsin, endsin) -> pl.Expr:
+def repeat_frame(columns, startsin, endsin) -> pl.Expr:
+    return (
+        pl.col(columns)
+        .explode()
+        .repeat_by(pl.col(endsin).explode() - pl.col(startsin).explode())
+        .explode()
+    )
+
+
+def mask_and_repeat_frame(columns, mask, startsin, endsin) -> pl.Expr:
     return (
         pl.col(columns)
         .explode()
@@ -104,23 +117,27 @@ def repeat_other(columns, starts, diffs):
         pl.col(columns)
         .explode()
         .take(
-            pl.col(starts)
+            arange_multi(diffs=diffs, starts=starts)
+        )
+    )
+
+
+def arange_multi(*, starts: pl.Expr, diffs: pl.Expr) -> pl.Expr:
+    return (
+        starts.filter(diffs.gt(0))
+        .explode()
+        .repeat_by(diffs.explode().filter(diffs.explode().gt(0)))
+        .explode()
+        .add(
+            pl.arange(0, diffs.explode().sum())
             .explode()
-            .repeat_by(pl.col(diffs).explode())
-            .alias("cat_starts")
-            .explode()
-            .add(
-                pl.arange(0, pl.col(diffs).explode().sum())
+            .sub(
+                diffs.filter(diffs.gt(0))
                 .explode()
-                .alias("length_sum_arange")
-                .sub(
-                    pl.col(diffs)
-                    .explode()
-                    .cumsum()
-                    .sub(pl.col(diffs).explode())
-                    .repeat_by(pl.col(diffs).explode())
-                    .explode()
-                )
+                .cumsum()
+                .sub(diffs.explode().filter(diffs.gt(0)))
+                .repeat_by(diffs.explode().filter(diffs.gt(0)))
+                .explode()
             )
         )
     )
@@ -153,14 +170,14 @@ def join(
         .select(
             pl.concat(
                 [
-                    repeat_frame(
+                    mask_and_repeat_frame(
                         df.columns,
                         MASK_2IN1_PROPERTY,
                         STARTS_2IN1_PROPERTY,
                         ENDS_2IN1_PROPERTY,
                     ),
                     repeat_other(
-                        df.columns, STARTS_1IN2_PROPERTY, LENGTHS_1IN2_PROPERTY
+                        df.columns, pl.col(STARTS_1IN2_PROPERTY).explode(), pl.col(LENGTHS_1IN2_PROPERTY).explode()
                     ),
                 ]
             ),
@@ -168,10 +185,10 @@ def join(
                 [
                     repeat_other(
                         df_2_column_names_after_join,
-                        STARTS_2IN1_PROPERTY,
-                        LENGTHS_2IN1_PROPERTY,
+                        pl.col(STARTS_2IN1_PROPERTY).explode(),
+                        pl.col(LENGTHS_2IN1_PROPERTY).explode(),
                     ),
-                    repeat_frame(
+                    mask_and_repeat_frame(
                         df_2_column_names_after_join,
                         MASK_1IN2_PROPERTY,
                         STARTS_1IN2_PROPERTY,
@@ -182,13 +199,14 @@ def join(
         )
     )
 
+
 def overlap(
-        df: pl.LazyFrame,
-        df2: pl.LazyFrame,
-        starts: str,
-        ends: str,
-        starts_2: str,
-        ends_2: str,
+    df: pl.LazyFrame,
+    df2: pl.LazyFrame,
+    starts: str,
+    ends: str,
+    starts_2: str,
+    ends_2: str,
 ) -> pl.LazyFrame:
     sorted_collapsed = df.sort(starts, ends).select([pl.all().implode()])
     sorted_collapsed_2 = df2.sort(starts_2, ends_2).select([pl.all().implode()])
@@ -204,5 +222,7 @@ def overlap(
         )
         .with_columns(compute_masks())
         .select(pl.all())
-        .select(pl.col(df.columns).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode()))
+        .select(
+            pl.col(df.columns).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode())
+        )
     )
