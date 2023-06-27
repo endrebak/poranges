@@ -1,7 +1,7 @@
 from typing import Optional, Tuple
 
 import polars as pl
-import pyoframe
+import pyoframe.ops
 
 
 @pl.api.register_dataframe_namespace("interval")
