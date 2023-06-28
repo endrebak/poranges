@@ -253,7 +253,7 @@ def closest(
             starts_2=starts_2,
             ends_2=ends_2,
         ).with_columns(
-            pl.lit(0, dtype=pl.Int64).alias("distance")
+            pl.lit(0, dtype=pl.UInt64).alias("distance")
         )
 
     if k > 0 and direction == "left":
@@ -302,18 +302,20 @@ def closest(
     if include_overlapping:
         _k_closest = pl.concat([overlaps, _closest]).sort(_distance_col).groupby(df.columns).agg(
             pl.all().head(k)
-        )
+        ).explode(pl.exclude(df.columns))
     elif _distance_col is None:
         _k_closest = _closest.sort(_distance_col).groupby(df.columns).agg(
             pl.all().head(k)
-        )
+        ).explode(pl.exclude(df.columns))
     else:
         _k_closest = _closest
 
-    if _distance_col is None:
-        return _k_closest
+    if distance_col is None:
+        final = _k_closest.drop(_distance_col)
     else:
-        return _k_closest.drop(_distance_col)
+        final = _k_closest
+
+    return final
 
 
 def closest_nonoverlapping_left(
@@ -381,7 +383,7 @@ def closest_nonoverlapping_left(
 
     if distance_col is not None:
         res = res.with_columns(
-            pl.col(starts).sub(pl.col(ends_2_renamed).explode()).alias(distance_col)
+            pl.col(starts).sub(pl.col(ends_2_renamed).explode()).cast(pl.UInt64).alias(distance_col)
         )
 
     return res
@@ -448,7 +450,7 @@ def closest_nonoverlapping_right(
 
     if distance_col is not None:
         res = res.with_columns(
-            pl.col(starts_2_renamed).sub(pl.col(ends).explode()).add(pl.lit(1)).alias(distance_col)
+            pl.col(starts_2_renamed).sub(pl.col(ends).explode()).cast(pl.UInt64).add(pl.lit(1)).alias(distance_col)
         )
 
     return res

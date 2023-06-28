@@ -92,5 +92,16 @@ def test_closest():
         k=2,
         distance_col="distance"
     )
-    print(res2.collect().to_init_repr())
-    raise
+
+    expected = pl.DataFrame(
+        [
+            pl.Series("chromosome", ['chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1'], dtype=pl.Utf8),
+            pl.Series("starts", [1, 1, 4, 4, 7, 7, 10, 10], dtype=pl.Int64),
+            pl.Series("ends", [4, 4, 5, 5, 8, 8, 11, 11], dtype=pl.Int64),
+            pl.Series("chromosome_right", ['chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1', 'chr1'], dtype=pl.Utf8),
+            pl.Series("starts_right", [0, 5, 0, 5, 5, 6, 6, 8], dtype=pl.Int64),
+            pl.Series("ends_right", [2, 7, 2, 7, 7, 10, 10, 9], dtype=pl.Int64),
+            pl.Series("distance", [0, 2, 2, 1, 0, 0, 0, 1], dtype=pl.UInt64),
+        ]
+    )
+    assert res2.collect().sort(res2.columns).frame_equal(expected)
