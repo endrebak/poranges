@@ -72,6 +72,25 @@ class IntervalFrame:
             distance_col=distance_col
         )
 
+    def merge(
+            self: pl.DataFrame,
+            starts: str,
+            ends: str,
+            merge_bookended: bool = False,
+            keep_original_columns: bool = True,
+            min_distance: int = 0,
+            suffix: str = "_before_merge"
+    ):
+        return pyoframe.ops.merge(
+            df=self._df.lazy(),
+            starts=starts,
+            ends=ends,
+            merge_bookended=merge_bookended,
+            keep_original_columns=keep_original_columns,
+            min_distance=min_distance,
+            suffix=suffix
+        )
+
 
 def _get_interval_columns(
         on: Optional[Tuple[str, str]] = None,

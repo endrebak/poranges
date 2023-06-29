@@ -12,7 +12,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["bioframe", "pytest"]
+dev = ["pyranges", "pytest", "hypothesis"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

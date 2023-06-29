@@ -11,11 +11,12 @@ from tests.property.generate_intervals import interval_df
     max_examples=MAX_EXAMPLES,
     print_blob=PRINT_BLOB
 )
-@given(df=interval_df(), df2=interval_df())
-def test_join(df, df2):
-    res_pyranges = to_pyranges(df).join(to_pyranges(df2), suffix="_right", apply_strand_suffix=False).df
-    res_pyoframe = df.interval.join(df2, on=("Start", "End")).collect()
+@given(df=interval_df())
+def test_merge(df):
+    res_pyranges = to_pyranges(df).merge().df
+    print(df)
+    res_pyoframe = df.interval.merge(starts="Start", ends="End").collect()
 
     print(res_pyoframe)
     print(res_pyranges)
-    compare_frames(pd_df=res_pyranges, pl_df=res_pyoframe)
+    compare_frames(pd_df=res_pyranges, pl_df=res_pyoframe, comparison_cols=("Start", "End"))

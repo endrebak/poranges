@@ -1,58 +1,163 @@
 # pyoframe
 
-GenomicRanges in Rust, accessible from Python.
+Interval operations for polars.
 
-In R&D phase. Not even in alpha.
+Interval operations can be used for any frame where the starts and ends columns representing the intervals are orderable and of the same type.
 
-# Example
+# Examples
 
-```
+## Join
+
+```python
+from datetime import date
 import polars as pl
+import pyoframe as pf
 
+df_1 = pl.DataFrame(
+    {
+        "id": ["1", "3", "2"],
+        "start": [ date(2022, 1, 1), date(2022, 5, 11), date(2022, 3, 4), ],
+        "end": [ date(2022, 2, 4), date(2022, 5, 16), date(2022, 3, 10), ],
+    }
+)
+# shape: (3, 3)
+# ┌─────┬────────────┬────────────┐
+# │ id  ┆ start      ┆ end        │
+# │ --- ┆ ---        ┆ ---        │
+# │ str ┆ date       ┆ date       │
+# ╞═════╪════════════╪════════════╡
+# │ 1   ┆ 2022-01-01 ┆ 2022-02-04 │
+# │ 3   ┆ 2022-05-11 ┆ 2022-05-16 │
+# │ 2   ┆ 2022-03-04 ┆ 2022-03-10 │
+# └─────┴────────────┴────────────┘
+
+df_2 = pl.DataFrame(
+    {
+        "start": [ date(2021, 12, 31), date(2025, 12, 31), ],
+        "end": [ date(2022, 4, 1), date(2025, 4, 1), ],
+    }
+)
+# shape: (2, 2)
+# ┌────────────┬────────────┐
+# │ start      ┆ end        │
+# │ ---        ┆ ---        │
+# │ date       ┆ date       │
+# ╞════════════╪════════════╡
+# │ 2021-12-31 ┆ 2022-04-01 │
+# │ 2025-12-31 ┆ 2025-04-01 │
+# └────────────┴────────────┘
+
+df_1.interval.join(df_2, on=("start", "end"), suffix="_whatevz")
+# shape: (2, 5)
+# ┌─────┬────────────┬────────────┬───────────────┬─────────────┐
+# │ id  ┆ start      ┆ end        ┆ start_whatevz ┆ end_whatevz │
+# │ --- ┆ ---        ┆ ---        ┆ ---           ┆ ---         │
+# │ str ┆ date       ┆ date       ┆ date          ┆ date        │
+# ╞═════╪════════════╪════════════╪═══════════════╪═════════════╡
+# │ 1   ┆ 2022-01-01 ┆ 2022-02-04 ┆ 2021-12-31    ┆ 2022-04-01  │
+# │ 2   ┆ 2022-03-04 ┆ 2022-03-10 ┆ 2021-12-31    ┆ 2022-04-01  │
+# └─────┴────────────┴────────────┴───────────────┴─────────────┘
+```
+
+## Overlap
+
+```python
+import polars as pl
 import pyoframe as pf
 
 df = pl.DataFrame(
     {
         "chromosome": ["chr1", "chr1", "chr1", "chr1"],
-        "starts1": [0, 8, 6, 5],
-        "ends1": [6, 9, 10, 7],
-        "genes": ["a", "b", "c", "d"]
+        "starts": [0, 8, 6, 5],
+        "ends": [6, 9, 10, 7],
     }
 )
+# shape: (4, 3)
+# ┌────────────┬────────┬──────┐
+# │ chromosome ┆ starts ┆ ends │
+# │ ---        ┆ ---    ┆ ---  │
+# │ str        ┆ i64    ┆ i64  │
+# ╞════════════╪════════╪══════╡
+# │ chr1       ┆ 0      ┆ 6    │
+# │ chr1       ┆ 8      ┆ 9    │
+# │ chr1       ┆ 6      ┆ 10   │
+# │ chr1       ┆ 5      ┆ 7    │
+# └────────────┴────────┴──────┘
+
 df2 = pl.DataFrame(
     {
-        "starts2": [6, 3, 1],
-        "ends2": [7, 8, 2],
+        "starts": [6, 3, 1],
+        "ends": [7, 8, 2],
+        "genes": ["a", "b", "c"],
     }
 )
+# shape: (3, 3)
+# ┌────────┬──────┬───────┐
+# │ starts ┆ ends ┆ genes │
+# │ ---    ┆ ---  ┆ ---   │
+# │ i64    ┆ i64  ┆ str   │
+# ╞════════╪══════╪═══════╡
+# │ 6      ┆ 7    ┆ a     │
+# │ 3      ┆ 8    ┆ b     │
+# │ 1      ┆ 2    ┆ c     │
+# └────────┴──────┴───────┘
 
-j = pf.overlaps(df, df2)
-print(j)
-
-# shape: (6, 6)
-# ┌────────────┬─────────┬───────┬───────┬─────────┬───────┐
-# │ chromosome ┆ starts1 ┆ ends1 ┆ genes ┆ starts2 ┆ ends2 │
-# │ ---        ┆ ---     ┆ ---   ┆ ---   ┆ ---     ┆ ---   │
-# │ str        ┆ i64     ┆ i64   ┆ str   ┆ i64     ┆ i64   │
-# ╞════════════╪═════════╪═══════╪═══════╪═════════╪═══════╡
-# │ chr1       ┆ 0       ┆ 6     ┆ a     ┆ 1       ┆ 2     │
-# │ chr1       ┆ 0       ┆ 6     ┆ a     ┆ 3       ┆ 8     │
-# │ chr1       ┆ 5       ┆ 7     ┆ d     ┆ 6       ┆ 7     │
-# │ chr1       ┆ 6       ┆ 10    ┆ c     ┆ 6       ┆ 7     │
-# │ chr1       ┆ 5       ┆ 7     ┆ d     ┆ 3       ┆ 8     │
-# │ chr1       ┆ 6       ┆ 10    ┆ c     ┆ 3       ┆ 8     │
-# └────────────┴─────────┴───────┴───────┴─────────┴───────┘
+df.interval.overlap(df2.lazy(), on=("starts", "ends"))
+# shape: (3, 3)
+# ┌────────────┬────────┬──────┐
+# │ chromosome ┆ starts ┆ ends │
+# │ ---        ┆ ---    ┆ ---  │
+# │ str        ┆ i64    ┆ i64  │
+# ╞════════════╪════════╪══════╡
+# │ chr1       ┆ 0      ┆ 6    │
+# │ chr1       ┆ 5      ┆ 7    │
+# │ chr1       ┆ 6      ┆ 10   │
+# └────────────┴────────┴──────┘
 ```
 
-## Developing
+# Merge
 
-### Setup
+```python
+import polars as pl
+import pyoframe as pf
+
+df = pl.DataFrame(
+    {
+        "starts": [4, 10, 7, 1],
+        "ends": [5, 11, 8, 6],
+        "weights": [-42, 0, 2, 1],
+    }
+)
+# shape: (4, 3)
+# ┌────────┬──────┬─────────┐
+# │ starts ┆ ends ┆ weights │
+# │ ---    ┆ ---  ┆ ---     │
+# │ i64    ┆ i64  ┆ i64     │
+# ╞════════╪══════╪═════════╡
+# │ 4      ┆ 5    ┆ -42     │
+# │ 10     ┆ 11   ┆ 0       │
+# │ 7      ┆ 8    ┆ 2       │
+# │ 1      ┆ 6    ┆ 1       │
+# └────────┴──────┴─────────┘
+res = df.interval.merge(df.lazy(), "starts", "ends")
+# shape: (3, 5)
+# ┌────────┬──────┬─────────────────────┬───────────────────┬───────────┐
+# │ starts ┆ ends ┆ starts_before_merge ┆ ends_before_merge ┆ weights   │
+# │ ---    ┆ ---  ┆ ---                 ┆ ---               ┆ ---       │
+# │ i64    ┆ i64  ┆ list[i64]           ┆ list[i64]         ┆ list[i64] │
+# ╞════════╪══════╪═════════════════════╪═══════════════════╪═══════════╡
+# │ 1      ┆ 5    ┆ [1, 4]              ┆ [6, 5]            ┆ [1, -42]  │
+# │ 7      ┆ 8    ┆ [7]                 ┆ [8]               ┆ [2]       │
+# │ 10     ┆ 11   ┆ [10]                ┆ [11]              ┆ [0]       │
+# └────────┴──────┴─────────────────────┴───────────────────┴───────────┘
+```
+
+
+# Testing
+
+pyoframe is backed by unittests and property-based tests.
 
 ```bash
-# Build Rust code and create Python bindings
-maturin develop
-
-# Run tests
-pytest
+$ pytest tests/unit
+$ pytest tests/property
 ```
-

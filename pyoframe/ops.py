@@ -454,3 +454,85 @@ def closest_nonoverlapping_right(
         )
 
     return res
+
+
+def merge(
+        df: pl.LazyFrame,
+        starts: str,
+        ends: str,
+        merge_bookended: bool = False,
+        keep_original_columns: bool = True,
+        min_distance: int = 0,
+        suffix: str = "_before_merge"
+) -> pl.DataFrame:
+    """
+    Merge overlapping intervals in a DataFrame.
+
+    Parameters
+    ----------
+    df
+        DataFrame with columns `starts` and `ends`.
+    starts
+        Column name of start positions.
+    ends
+        Column name of end positions.
+    keep_original_columns
+        If True, original columns are kept in the output DataFrame.
+    merge_bookended
+        If True, merge intervals that are bookended by overlapping intervals.
+    min_distance
+        Minimum distance between intervals to be merged.
+    suffix
+        Suffix for the old start and end columns. Only used if `keep_original_columns` is True.
+
+    Returns
+    -------
+    DataFrame
+        Merged intervals.
+    """
+    if not merge_bookended:
+        cluster_borders_expr = pl.col(starts).explode().shift(-1).gt(pl.col("max_ends").explode().add(min_distance)).shift_and_fill(True, periods=1).extend_constant(True, 1)
+    else:
+        cluster_borders_expr = pl.col(starts).explode().shift(-1).ge(pl.col("max_ends").explode().add(min_distance)).shift_and_fill(True, periods=1).extend_constant(True, 1)
+
+    ordered = (
+        df.sort([starts, ends]).select(
+            pl.all().implode(),
+            pl.col(ends).cummax().implode().alias("max_ends")
+        )
+        .with_columns(
+            cluster_borders_expr.alias("cluster_borders").implode()
+        )
+        .select(
+            pl.col(df.columns),
+            pl.col("cluster_borders").explode().cumsum()
+            .sub(1).slice(0, pl.col("cluster_borders").explode().len() - 1).implode().alias("cluster_ids"),
+            pl.col(starts).explode().filter(
+                pl.col("cluster_borders").explode().slice(0, pl.col("cluster_borders").explode().len() - 1),
+            ).alias("cluster_starts").implode(),
+            pl.col(ends).explode().filter(
+                pl.col("cluster_borders").explode().slice(1, pl.col("cluster_borders").explode().len())
+            ).alias("cluster_ends").implode(),
+            )
+    )
+    cluster_frame = ordered.select(
+        pl.col(["cluster_starts", "cluster_ends"]).explode()
+    )
+    if keep_original_columns:
+        original_columns_per_cluster = ordered.select(
+            pl.col(df.columns + ["cluster_ids"]).explode()
+        ).groupby("cluster_ids", maintain_order=True).agg(
+            pl.col(df.columns)
+        ).drop("cluster_ids")
+        cluster_frame = cluster_frame.with_context(original_columns_per_cluster).with_columns(
+            pl.col(original_columns_per_cluster.columns)
+        )
+
+    return cluster_frame.rename(
+        {
+            "cluster_starts": starts,
+            "cluster_ends": ends,
+            starts: starts + suffix,
+            ends: ends + suffix
+        }
+    )
