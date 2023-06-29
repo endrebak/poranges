@@ -2,7 +2,12 @@
 
 Interval operations for polars.
 
-Interval operations can be used for any frame where the starts and ends columns representing the intervals are orderable and of the same type.
+Interval operations can be used for any frame where the start and end columns representing the intervals are orderable and of the same type.
+
+The currently supported binary operations are join, k-closest, and overlap.
+The currently supported unary operations are merge and cluster.
+
+As this is a work in progress, see the [\_\_init\_\_.py](https://github.com/endrebak/pyoframe/blob/master/pyoframe/__init__.py) for details - the functions are rich in features!
 
 # Examples
 
@@ -58,6 +63,70 @@ df_1.interval.join(df_2, on=("start", "end"), suffix="_whatevz")
 # │ 2   ┆ 2022-03-04 ┆ 2022-03-10 ┆ 2021-12-31    ┆ 2022-04-01  │
 # └─────┴────────────┴────────────┴───────────────┴─────────────┘
 ```
+
+## Closest
+
+
+```python
+import polars as pl
+import pyoframe as pf
+
+df = pl.DataFrame(
+    {
+        "chromosome": ["chr1", "chr1", "chr1", "chr1"],
+        "starts": [4, 1, 10, 7],
+        "ends": [5, 4, 11, 8],
+    }
+)
+# shape: (4, 3)
+# ┌────────────┬────────┬──────┐
+# │ chromosome ┆ starts ┆ ends │
+# │ ---        ┆ ---    ┆ ---  │
+# │ str        ┆ i64    ┆ i64  │
+# ╞════════════╪════════╪══════╡
+# │ chr1       ┆ 4      ┆ 5    │
+# │ chr1       ┆ 1      ┆ 4    │
+# │ chr1       ┆ 10     ┆ 11   │
+# │ chr1       ┆ 7      ┆ 8    │
+# └────────────┴────────┴──────┘
+
+df2 = pl.DataFrame(
+    {
+        "chromosome": ["chr1", "chr1", "chr1", "chr1"],
+        "starts": [5, 0, 8, 6],
+        "ends": [7, 2, 9, 10],
+    }
+)
+# shape: (4, 3)
+# ┌────────────┬────────┬──────┐
+# │ chromosome ┆ starts ┆ ends │
+# │ ---        ┆ ---    ┆ ---  │
+# │ str        ┆ i64    ┆ i64  │
+# ╞════════════╪════════╪══════╡
+# │ chr1       ┆ 5      ┆ 7    │
+# │ chr1       ┆ 0      ┆ 2    │
+# │ chr1       ┆ 8      ┆ 9    │
+# │ chr1       ┆ 6      ┆ 10   │
+# └────────────┴────────┴──────┘
+
+df.interval.closest(df2, on=("starts", "ends"), k=2, distance_col="distance")
+# shape: (8, 7)
+# ┌────────────┬────────┬──────┬──────────────────┬──────────────┬────────────┬──────────┐
+# │ chromosome ┆ starts ┆ ends ┆ chromosome_right ┆ starts_right ┆ ends_right ┆ distance │
+# │ ---        ┆ ---    ┆ ---  ┆ ---              ┆ ---          ┆ ---        ┆ ---      │
+# │ str        ┆ i64    ┆ i64  ┆ str              ┆ i64          ┆ i64        ┆ u64      │
+# ╞════════════╪════════╪══════╪══════════════════╪══════════════╪════════════╪══════════╡
+# │ chr1       ┆ 1      ┆ 4    ┆ chr1             ┆ 0            ┆ 2          ┆ 0        │
+# │ chr1       ┆ 1      ┆ 4    ┆ chr1             ┆ 5            ┆ 7          ┆ 2        │
+# │ chr1       ┆ 4      ┆ 5    ┆ chr1             ┆ 0            ┆ 2          ┆ 2        │
+# │ chr1       ┆ 4      ┆ 5    ┆ chr1             ┆ 5            ┆ 7          ┆ 1        │
+# │ chr1       ┆ 7      ┆ 8    ┆ chr1             ┆ 5            ┆ 7          ┆ 0        │
+# │ chr1       ┆ 7      ┆ 8    ┆ chr1             ┆ 6            ┆ 10         ┆ 0        │
+# │ chr1       ┆ 10     ┆ 11   ┆ chr1             ┆ 6            ┆ 10         ┆ 0        │
+# │ chr1       ┆ 10     ┆ 11   ┆ chr1             ┆ 8            ┆ 9          ┆ 1        │
+# └────────────┴────────┴──────┴──────────────────┴──────────────┴────────────┴──────────┘
+```
+
 
 ## Overlap
 
