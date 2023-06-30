@@ -1,4 +1,5 @@
 import polars as pl
+import poranges.register_interval_namespace
 
 from poranges import ops
 from poranges.ops import closest_nonoverlapping_left, \

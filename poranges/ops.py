@@ -490,31 +490,9 @@ def merge(
     DataFrame
         Merged intervals.
     """
-    if not merge_bookended:
-        cluster_borders_expr = pl.col(starts).explode().shift(-1).gt(pl.col("max_ends").explode().add(min_distance)).shift_and_fill(True, periods=1).extend_constant(True, 1)
-    else:
-        cluster_borders_expr = pl.col(starts).explode().shift(-1).ge(pl.col("max_ends").explode().add(min_distance)).shift_and_fill(True, periods=1).extend_constant(True, 1)
+    cluster_borders_expr = _cluster_borders_expr(merge_bookended, min_distance, starts)
 
-    ordered = (
-        df.sort([starts, ends]).select(
-            pl.all().implode(),
-            pl.col(ends).cummax().implode().alias("max_ends")
-        )
-        .with_columns(
-            cluster_borders_expr.alias("cluster_borders").implode()
-        )
-        .select(
-            pl.col(df.columns),
-            pl.col("cluster_borders").explode().cumsum()
-            .sub(1).slice(0, pl.col("cluster_borders").explode().len() - 1).implode().alias("cluster_ids"),
-            pl.col(starts).explode().filter(
-                pl.col("cluster_borders").explode().slice(0, pl.col("cluster_borders").explode().len() - 1),
-            ).alias("cluster_starts").implode(),
-            pl.col("max_ends").explode().filter(
-                pl.col("cluster_borders").explode().slice(1, pl.col("cluster_borders").explode().len())
-            ).alias("cluster_ends").implode(),
-            )
-    )
+    ordered = _clusters(cluster_borders_expr, df, ends, starts)
     cluster_frame = ordered.select(
         pl.col(["cluster_starts", "cluster_ends"]).explode()
     )
@@ -536,3 +514,36 @@ def merge(
             ends: ends + suffix
         }
     )
+
+
+def _clusters(cluster_borders_expr, df, ends, starts) -> pl.Expr:
+    return (
+        df.sort([starts, ends]).select(
+            pl.all().implode(),
+            pl.col(ends).cummax().implode().alias("max_ends")
+        )
+        .with_columns(
+            cluster_borders_expr.alias("cluster_borders").implode()
+        )
+        .select(
+            pl.col(df.columns),
+            pl.col("cluster_borders").explode().cumsum()
+            .sub(1).slice(0, pl.col("cluster_borders").explode().len() - 1).implode().alias("cluster_ids"),
+            pl.col(starts).explode().filter(
+                pl.col("cluster_borders").explode().slice(0, pl.col("cluster_borders").explode().len() - 1),
+            ).alias("cluster_starts").implode(),
+            pl.col("max_ends").explode().filter(
+                pl.col("cluster_borders").explode().slice(1, pl.col("cluster_borders").explode().len())
+            ).alias("cluster_ends").implode(),
+        )
+    )
+
+
+def _cluster_borders_expr(merge_bookended, min_distance, starts) -> pl.Expr:
+    if not merge_bookended:
+        cluster_borders_expr = pl.col(starts).explode().shift(-1).gt(
+            pl.col("max_ends").explode().add(min_distance)).shift_and_fill(True, periods=1).extend_constant(True, 1)
+    else:
+        cluster_borders_expr = pl.col(starts).explode().shift(-1).ge(
+            pl.col("max_ends").explode().add(min_distance)).shift_and_fill(True, periods=1).extend_constant(True, 1)
+    return cluster_borders_expr

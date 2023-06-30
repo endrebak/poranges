@@ -1,4 +1,5 @@
 from datetime import date
+import poranges.register_interval_namespace
 
 import polars as pl
 

@@ -1,4 +1,4 @@
-import poranges as po  # pylint: disable=unused-import
+import poranges.register_interval_namespace
 
 from hypothesis import given, settings
 

@@ -9,14 +9,16 @@ The currently supported unary operations are merge and cluster.
 
 As this is a work in progress, see the [\_\_init\_\_.py](https://github.com/endrebak/poranges/blob/master/poranges/__init__.py) for details - the functions are rich in features!
 
-# Examples
+# Examples (genome agnostic)
+
+General interval operations are found in the interval namespace.
 
 ## Join
 
 ```python
 from datetime import date
 import polars as pl
-import poranges as po
+import poranges.register_interval_namespace
 
 df_1 = pl.DataFrame(
     {
