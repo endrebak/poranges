@@ -11,14 +11,14 @@ df = pl.DataFrame(
 )
 
 
-def otest_merge_intervals():
+def test_merge_intervals():
     res = merge(df.lazy(), "starts", "ends").collect()
 
     assert res.frame_equal(
         pl.DataFrame(
             [
                 pl.Series("starts", [1, 7, 10], dtype=pl.Int64),
-                pl.Series("ends", [5, 8, 11], dtype=pl.Int64),
+                pl.Series("ends", [6, 8, 11], dtype=pl.Int64),
                 pl.Series("starts_before_merge", [[1, 4], [7], [10]], dtype=pl.List(pl.Int64)),
                 pl.Series("ends_before_merge", [[6, 5], [8], [11]], dtype=pl.List(pl.Int64)),
                 pl.Series("weights", [[1, -42], [2], [0]], dtype=pl.List(pl.Int64)),

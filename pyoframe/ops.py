@@ -510,7 +510,7 @@ def merge(
             pl.col(starts).explode().filter(
                 pl.col("cluster_borders").explode().slice(0, pl.col("cluster_borders").explode().len() - 1),
             ).alias("cluster_starts").implode(),
-            pl.col(ends).explode().filter(
+            pl.col("max_ends").explode().filter(
                 pl.col("cluster_borders").explode().slice(1, pl.col("cluster_borders").explode().len())
             ).alias("cluster_ends").implode(),
             )
