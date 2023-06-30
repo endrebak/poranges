@@ -1,4 +1,4 @@
-import pyoframe as pf  # pylint: disable=unused-import
+import poranges as po  # pylint: disable=unused-import
 
 from hypothesis import given, settings
 
@@ -14,8 +14,8 @@ from tests.property.generate_intervals import interval_df
 @given(df=interval_df(), df2=interval_df())
 def test_closest(df, df2):
     res_pyranges = to_pyranges(df).nearest(to_pyranges(df2), suffix="_right", apply_strand_suffix=False).df
-    res_pyoframe = df.interval.closest(df2, on=("Start", "End")).collect()
+    res_poranges = df.interval.closest(df2, on=("Start", "End")).collect()
 
-    print(res_pyoframe)
+    print(res_poranges)
     print(res_pyranges)
-    compare_frames(pd_df=res_pyranges, pl_df=res_pyoframe)
+    compare_frames(pd_df=res_pyranges, pl_df=res_poranges)

@@ -1,7 +1,7 @@
 import polars as pl
 
-from pyoframe import ops
-from pyoframe.ops import closest_nonoverlapping_left, \
+from poranges import ops
+from poranges.ops import closest_nonoverlapping_left, \
     closest_nonoverlapping_right
 
 df = pl.DataFrame(

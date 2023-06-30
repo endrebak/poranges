@@ -1,7 +1,7 @@
 from typing import Optional, Tuple
 
 import polars as pl
-import pyoframe.ops
+import poranges.ops
 
 
 @pl.api.register_dataframe_namespace("interval")
@@ -19,7 +19,7 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        return pyoframe.ops.join(
+        return poranges.ops.join(
             self._df.lazy(),
             other.lazy(),
             starts=starts,
@@ -38,7 +38,7 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        return pyoframe.ops.overlap(
+        return poranges.ops.overlap(
             self._df.lazy(),
             other.lazy(),
             starts=starts,
@@ -60,7 +60,7 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        return pyoframe.ops.closest(
+        return poranges.ops.closest(
             self._df.lazy(),
             other.lazy(),
             starts=starts,
@@ -81,7 +81,7 @@ class IntervalFrame:
             min_distance: int = 0,
             suffix: str = "_before_merge"
     ):
-        return pyoframe.ops.merge(
+        return poranges.ops.merge(
             df=self._df.lazy(),
             starts=starts,
             ends=ends,

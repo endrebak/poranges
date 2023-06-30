@@ -1,4 +1,4 @@
-# pyoframe
+# poranges
 
 Interval operations for polars.
 
@@ -7,7 +7,7 @@ Interval operations can be used for any frame where the start and end columns re
 The currently supported binary operations are join, k-closest, and overlap.
 The currently supported unary operations are merge and cluster.
 
-As this is a work in progress, see the [\_\_init\_\_.py](https://github.com/endrebak/pyoframe/blob/master/pyoframe/__init__.py) for details - the functions are rich in features!
+As this is a work in progress, see the [\_\_init\_\_.py](https://github.com/endrebak/poranges/blob/master/poranges/__init__.py) for details - the functions are rich in features!
 
 # Examples
 
@@ -16,13 +16,13 @@ As this is a work in progress, see the [\_\_init\_\_.py](https://github.com/endr
 ```python
 from datetime import date
 import polars as pl
-import pyoframe as pf
+import poranges as po
 
 df_1 = pl.DataFrame(
     {
         "id": ["1", "3", "2"],
-        "start": [ date(2022, 1, 1), date(2022, 5, 11), date(2022, 3, 4), ],
-        "end": [ date(2022, 2, 4), date(2022, 5, 16), date(2022, 3, 10), ],
+        "start": [date(2022, 1, 1), date(2022, 5, 11), date(2022, 3, 4), ],
+        "end": [date(2022, 2, 4), date(2022, 5, 16), date(2022, 3, 10), ],
     }
 )
 # shape: (3, 3)
@@ -38,8 +38,8 @@ df_1 = pl.DataFrame(
 
 df_2 = pl.DataFrame(
     {
-        "start": [ date(2021, 12, 31), date(2025, 12, 31), ],
-        "end": [ date(2022, 4, 1), date(2025, 4, 1), ],
+        "start": [date(2021, 12, 31), date(2025, 12, 31), ],
+        "end": [date(2022, 4, 1), date(2025, 4, 1), ],
     }
 )
 # shape: (2, 2)
@@ -66,10 +66,9 @@ df_1.interval.join(df_2, on=("start", "end"), suffix="_whatevz")
 
 ## Closest
 
-
 ```python
 import polars as pl
-import pyoframe as pf
+import poranges as po
 
 df = pl.DataFrame(
     {
@@ -132,7 +131,7 @@ df.interval.closest(df2, on=("starts", "ends"), k=2, distance_col="distance")
 
 ```python
 import polars as pl
-import pyoframe as pf
+import poranges as po
 
 df = pl.DataFrame(
     {
@@ -188,7 +187,7 @@ df.interval.overlap(df2.lazy(), on=("starts", "ends"))
 
 ```python
 import polars as pl
-import pyoframe as pf
+import poranges as po
 
 df = pl.DataFrame(
     {

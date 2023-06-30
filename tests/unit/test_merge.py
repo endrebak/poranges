@@ -1,6 +1,6 @@
 import polars as pl
 
-from pyoframe.ops import merge
+from poranges.ops import merge
 
 df = pl.DataFrame(
     {

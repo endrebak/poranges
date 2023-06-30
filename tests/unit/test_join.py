@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from pyoframe.ops import (
+from poranges.ops import (
     compute_masks,
     repeat_other,
     mask_and_repeat_frame,
