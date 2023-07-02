@@ -14,18 +14,18 @@ df = pl.DataFrame(
 
 def test_merge_intervals():
     res = merge(df.lazy(), "chrom", "starts", "ends").collect()
-    print(res)
 
-    assert 0
-
-    assert res.frame_equal(
+    res.frame_equal(
         pl.DataFrame(
             [
-                pl.Series("starts", [1, 7, 10], dtype=pl.Int64),
-                pl.Series("ends", [6, 8, 11], dtype=pl.Int64),
-                pl.Series("starts_before_merge", [[1, 4], [7], [10]], dtype=pl.List(pl.Int64)),
-                pl.Series("ends_before_merge", [[6, 5], [8], [11]], dtype=pl.List(pl.Int64)),
-                pl.Series("weights", [[1, -42], [2], [0]], dtype=pl.List(pl.Int64)),
+                pl.Series("starts", [[1, 7], [10]], dtype=pl.List(pl.Int64)),
+                pl.Series("ends", [[6, 8], [11]], dtype=pl.List(pl.Int64)),
+                pl.Series("chrom", [[1, 1, 1], [2]], dtype=pl.List(pl.Int64)),
+                pl.Series("cluster_ids", [[0, 0, 1], [0]], dtype=pl.List(pl.Int64)),
+                pl.Series("starts_before_merge", [[1, 4, 7], [10]], dtype=pl.List(pl.Int64)),
+                pl.Series("ends_before_merge", [[6, 5, 8], [11]], dtype=pl.List(pl.Int64)),
+                pl.Series("weights", [[1, -42, 2], [0]], dtype=pl.List(pl.Int64)),
             ]
         )
     )
+

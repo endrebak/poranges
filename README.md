@@ -7,7 +7,53 @@ Interval operations can be used for any frame where the start and end columns re
 The currently supported binary operations are join, k-closest, and overlap.
 The currently supported unary operations are merge and cluster.
 
-As this is a work in progress, see the [\_\_init\_\_.py](https://github.com/endrebak/poranges/blob/master/poranges/__init__.py) for details - the functions are rich in features!
+This is a work in progress and is accepting contributions.
+
+# Examples (genome aware)
+
+Genome aware interval operations are found in the genome namespace.
+
+This namespace currently only implements the merge/cluster operation.
+
+## Merge
+
+```python
+import polars as pl
+import poranges.register_genomics_namespace
+
+df = pl.DataFrame(
+    {
+        "chrom": [1, 2, 1, 1],
+        "starts": [4, 10, 7, 1],
+        "ends": [5, 11, 8, 6],
+        "weights": [-42, 0, 2, 1],
+    }
+)
+# shape: (4, 4)
+# ┌───────┬────────┬──────┬─────────┐
+# │ chrom ┆ starts ┆ ends ┆ weights │
+# │ ---   ┆ ---    ┆ ---  ┆ ---     │
+# │ i64   ┆ i64    ┆ i64  ┆ i64     │
+# ╞═══════╪════════╪══════╪═════════╡
+# │ 1     ┆ 4      ┆ 5    ┆ -42     │
+# │ 2     ┆ 10     ┆ 11   ┆ 0       │
+# │ 1     ┆ 7      ┆ 8    ┆ 2       │
+# │ 1     ┆ 1      ┆ 6    ┆ 1       │
+# └───────┴────────┴──────┴─────────┘
+
+df.genomics.merge()
+# shape: (3, 6)
+# ┌───────┬────────┬──────┬─────────────────────┬───────────────────┬───────────┐
+# │ chrom ┆ starts ┆ ends ┆ starts_before_merge ┆ ends_before_merge ┆ weights   │
+# │ ---   ┆ ---    ┆ ---  ┆ ---                 ┆ ---               ┆ ---       │
+# │ i64   ┆ i64    ┆ i64  ┆ list[i64]           ┆ list[i64]         ┆ list[i64] │
+# ╞═══════╪════════╪══════╪═════════════════════╪═══════════════════╪═══════════╡
+# │ 2     ┆ 10     ┆ 11   ┆ [10]                ┆ [11]              ┆ [0]       │
+# │ 1     ┆ 1      ┆ 6    ┆ [1, 4]              ┆ [6, 5]            ┆ [1, -42]  │
+# │ 1     ┆ 7      ┆ 8    ┆ [7]                 ┆ [8]               ┆ [2]       │
+# └───────┴────────┴──────┴─────────────────────┴───────────────────┴───────────┘
+```
+
 
 # Examples (genome agnostic)
 

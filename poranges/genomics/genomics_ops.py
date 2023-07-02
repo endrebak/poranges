@@ -62,30 +62,37 @@ def merge(
             pl.col("max_ends").explode().filter(
                 pl.col("cluster_borders").explode().slice(1, pl.col("cluster_borders").explode().len())
             ).alias("cluster_ends"),
-            # pl.col("cluster_borders").explode().cumsum()
-            # .sub(1).slice(0, pl.col("cluster_borders").explode().len() - 1).alias("cluster_ids"),
+            pl.col("cluster_borders").explode().cumsum()
+            .sub(1).slice(0, pl.col("cluster_borders").explode().len() - 1).value_counts(sort=True, multithreaded=False)
+            .struct.field("counts").alias("cluster_ids").cumsum()
+            .alias("take"),
             pl.exclude(grpby_ks).explode(),
             )
     )
-    # print(ordered.collect())
+
     cluster_frame = ordered.select(
-        pl.col(["cluster_starts", "cluster_ends"])
-    )
+        pl.col([chromosome, "cluster_starts", "cluster_ends"])
+    ).sort(chromosome)
+
+    rename = {
+        "cluster_starts": starts,
+        "cluster_ends": ends,
+    }
 
     if keep_original_columns:
-        original_columns_per_cluster = ordered.select(
-            pl.col(chromosome + "_repeated").alias(chromosome),
-            pl.exclude(grpby_ks + ["cluster_starts", "cluster_ends", "cluster_borders", chromosome + "_repeated"])
-        )
-        cluster_frame = cluster_frame.with_context(original_columns_per_cluster).with_columns(
-            pl.col(original_columns_per_cluster.columns)
+        cols_not_in_grpby_ks = [c for c in df.columns if c not in grpby_ks]
+        cols_to_explode = ["cluster_starts", "cluster_ends"] + cols_not_in_grpby_ks
+        cluster_frame = ordered.explode("cluster_starts", "cluster_ends", "take").groupby(grpby_ks).agg(
+            pl.col("cluster_starts", "cluster_ends"),
+            pl.col(cols_not_in_grpby_ks).list.slice(
+                pl.col("take").shift_and_fill(0), pl.col("take")
+            )
+        ).explode(cols_to_explode)
+        rename.update(
+            {
+                starts: starts + suffix,
+                ends: ends + suffix
+            }
         )
 
-    return cluster_frame.rename(
-        {
-            "cluster_starts": starts,
-            "cluster_ends": ends,
-            starts: starts + suffix,
-            ends: ends + suffix
-        }
-    )
+    return cluster_frame.rename(rename)
