@@ -15,7 +15,7 @@ from tests.property.generate_intervals import interval_df
 def test_merge(df):
     res_pyranges = to_pyranges(df).merge().df
     print(df)
-    res_poranges = df.interval.merge(starts="Start", ends="End").collect()
+    res_poranges = df.interval.merge(starts="Start", ends="End", by=["Chromosome"]).collect()
 
     print(res_poranges)
     print(res_pyranges)

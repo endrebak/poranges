@@ -1,6 +1,6 @@
 import polars as pl
 
-from poranges.genomics.genomics_ops import merge
+from poranges.ops import merge
 
 df = pl.DataFrame(
     {
@@ -13,7 +13,7 @@ df = pl.DataFrame(
 
 
 def test_merge_intervals():
-    res = merge(df.lazy(), "chrom", "starts", "ends").collect()
+    res = merge(df.lazy(), "starts", "ends", by=["chrom"]).collect()
 
     res.frame_equal(
         pl.DataFrame(

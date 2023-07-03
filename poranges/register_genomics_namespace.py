@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import polars as pl
 import poranges.ops
@@ -11,8 +11,10 @@ class IntervalFrame:
 
     def merge(
             self: pl.DataFrame,
+            chromosome: str,
             starts: str,
             ends: str,
+            by: Optional[List[str]] = None,
             merge_bookended: bool = False,
             keep_original_columns: bool = True,
             min_distance: int = 0,
@@ -22,6 +24,7 @@ class IntervalFrame:
             df=self._df.lazy(),
             starts=starts,
             ends=ends,
+            by=[chromosome] + by if by is not None else [chromosome],
             merge_bookended=merge_bookended,
             keep_original_columns=keep_original_columns,
             min_distance=min_distance,
