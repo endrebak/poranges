@@ -496,8 +496,13 @@ def merge(
         DataFrame with merged intervals.
     """
     lazy_df = df.lazy().sort([starts, ends])
+    print(lazy_df.collect())
 
-    grpby_ks = by if by is not None else [ROW_NUMBER]
+    if by is None:
+        lazy_df = lazy_df.select(pl.all().implode()).with_row_count(ROW_NUMBER).select(pl.all().explode())
+        grpby_ks = [ROW_NUMBER]
+    else:
+        grpby_ks = by
 
     ordered = (
         lazy_df.groupby(grpby_ks).agg(
@@ -509,7 +514,7 @@ def merge(
             _cluster_borders_expr(merge_bookended, min_distance, starts).alias("cluster_borders")
         )
         .groupby(grpby_ks).agg(
-            pl.col(grpby_ks).repeat_by(pl.col("starts").list.lengths()).suffix("_repeated"),
+            # pl.col(grpby_ks).repeat_by(pl.col("starts").list.lengths()).suffix("_repeated"),
             pl.col(starts).explode().filter(
                 pl.col("cluster_borders").explode().slice(0, pl.col("cluster_borders").explode().len() - 1),
             ).alias("cluster_starts"),
@@ -523,10 +528,9 @@ def merge(
             pl.exclude(grpby_ks).explode(),
             )
     )
-
-    cluster_frame = ordered.select(
-        pl.col(grpby_ks + ["cluster_starts", "cluster_ends"])
-    ).sort(grpby_ks + ["cluster_starts", "cluster_ends"])
+    print(ordered.collect())
+    cluster_frame = ordered.explode("cluster_starts", "cluster_ends", "take")
+    print(cluster_frame.collect())
 
     rename = {
         "cluster_starts": starts,
@@ -535,19 +539,29 @@ def merge(
 
     if keep_original_columns:
         cols_not_in_grpby_ks = [c for c in df.columns if c not in grpby_ks]
-        cols_to_explode = ["cluster_starts", "cluster_ends"] + cols_not_in_grpby_ks
         cluster_frame = ordered.explode("cluster_starts", "cluster_ends", "take").groupby(grpby_ks).agg(
             pl.col("cluster_starts", "cluster_ends"),
+            pl.col(cols_not_in_grpby_ks).explode(),
+            pl.col("take").shift_and_fill(0).explode().alias("take_from"),
+            pl.col("take").explode().alias("take_until"),
+        ).explode(
+            "cluster_starts", "cluster_ends", "take_from", "take_until"
+        ).select(
+            pl.col(grpby_ks),
+            pl.col(["cluster_starts", "cluster_ends"]).explode(),
             pl.col(cols_not_in_grpby_ks).list.slice(
-                pl.col("take").shift_and_fill(0), pl.col("take")
+                pl.col("take_from"), pl.col("take_until").sub(pl.col("take_from"))
             )
-        ).explode(cols_to_explode)
+        )
         rename.update(
             {
                 starts: starts + suffix,
                 ends: ends + suffix
             }
         )
+
+    if by is None:
+        cluster_frame = cluster_frame.drop(ROW_NUMBER)
 
     return cluster_frame.rename(rename)
 
