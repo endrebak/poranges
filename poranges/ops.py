@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
 import polars as pl
 
@@ -134,15 +134,16 @@ def arange_multi(*, starts: pl.Expr, diffs: pl.Expr) -> pl.Expr:
     )
 
 
-def join(
-    df: pl.LazyFrame,
-    df2: pl.LazyFrame,
-    suffix: str,
-    starts: str,
-    ends: str,
-    starts_2: str,
-    ends_2: str,
-) -> pl.LazyFrame:
+def _four_quadrants_data(
+        df: pl.LazyFrame,
+        df2: pl.LazyFrame,
+        suffix: str,
+        starts: str,
+        ends: str,
+        starts_2: str,
+        ends_2: str,
+) -> Tuple[pl.LazyFrame, List[str]]:
+
     sorted_collapsed = df.sort(starts, ends).select([pl.all().implode()])
     sorted_collapsed_2 = df2.sort(starts_2, ends_2).select([pl.all().implode()])
     j = sorted_collapsed.join(sorted_collapsed_2, how="cross", suffix=suffix)
@@ -159,6 +160,28 @@ def join(
         .with_columns(apply_masks())
         .with_columns(add_lengths())
     )
+    return four_quadrants, df_2_column_names_after_join
+
+
+def join(
+    df: pl.LazyFrame,
+    df2: pl.LazyFrame,
+    suffix: str,
+    starts: str,
+    ends: str,
+    starts_2: str,
+    ends_2: str,
+) -> pl.LazyFrame:
+    four_quadrants, df_2_column_names_after_join = _four_quadrants_data(
+        df=df,
+        df2=df2,
+        suffix=suffix,
+        starts=starts,
+        ends=ends,
+        starts_2=starts_2,
+        ends_2=ends_2,
+    )
+
     # we use implode so we can use the cross product join; seemingly the only way to horizontally concat a lazy-frame
     top_left = four_quadrants.select(
         mask_and_repeat_frame(
@@ -204,23 +227,18 @@ def overlap(
     starts_2: str,
     ends_2: str,
 ) -> pl.LazyFrame:
-    sorted_collapsed = df.sort(starts, ends).select([pl.all().implode()])
-    sorted_collapsed_2 = df2.sort(starts_2, ends_2).select([pl.all().implode()])
-    j = sorted_collapsed.join(sorted_collapsed_2, how="cross")
+    four_quadrants, df_2_column_names_after_join = _four_quadrants_data(
+        df=df,
+        df2=df2,
+        starts=starts,
+        ends=ends,
+        starts_2=starts_2,
+        ends_2=ends_2,
+        suffix="_right",
+    )
 
-    df_2_column_names_after_join = j.columns[len(df.columns) :]
-    starts_2_renamed = df_2_column_names_after_join[df2.columns.index(starts_2)]
-    ends_2_renamed = df_2_column_names_after_join[df2.columns.index(ends_2)]
-
-    return (
-        j.with_columns(
-            find_starts_in_ends(starts, ends, starts_2_renamed, ends_2_renamed)
-        )
-        .with_columns(compute_masks())
-        .select(pl.all())
-        .select(
-            pl.col(df.columns).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode())
-        )
+    return four_quadrants.select(
+        pl.col(df.columns).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode())
     )
 
 
