@@ -181,7 +181,6 @@ def join(
         starts_2=starts_2,
         ends_2=ends_2,
     )
-
     # we use implode so we can use the cross product join; seemingly the only way to horizontally concat a lazy-frame
     top_left = four_quadrants.select(
         mask_and_repeat_frame(
@@ -216,7 +215,6 @@ def join(
     return pl.concat([top_left, bottom_left]).with_context(pl.concat([top_right, bottom_right])).select(
         pl.all()
     )
-
 
 
 def overlap(

@@ -10,7 +10,7 @@ from poranges.ops import (
     apply_masks,
     add_lengths,
     find_starts_in_ends,
-    join,
+    join, _four_quadrants_data,
 )
 
 CHROMOSOME_PROPERTY = "chromosome"
@@ -41,6 +41,7 @@ DF1_COLUMNS = df.columns
 
 df2 = pl.DataFrame(
     {
+        CHROMOSOME_PROPERTY: ["chr1", "chr1", "chr1"],
         STARTS_PROPERTY: [6, 3, 1],
         ENDS_PROPERTY: [7, 8, 2],
         "genes": ["a", "b", "c"],
@@ -281,3 +282,38 @@ def test_overlap():
     )
 
     assert a.frame_equal(expected)
+
+
+expected_result = pl.DataFrame(
+    [
+        pl.Series("chromosome", [['chr1', 'chr1', 'chr1', 'chr1']], dtype=pl.List(pl.Utf8)),
+        pl.Series("starts", [[0, 5, 6, 8]], dtype=pl.List(pl.Int64)),
+        pl.Series("ends", [[6, 7, 10, 9]], dtype=pl.List(pl.Int64)),
+        pl.Series("chromosome_2", [['chr1', 'chr1', 'chr1']], dtype=pl.List(pl.Utf8)),
+        pl.Series("starts_2", [[1, 3, 6]], dtype=pl.List(pl.Int64)),
+        pl.Series("ends_2", [[2, 8, 7]], dtype=pl.List(pl.Int64)),
+        pl.Series("genes", [['c', 'b', 'a']], dtype=pl.List(pl.Utf8)),
+        pl.Series("starts_2in1", [[0, 2, 2]], dtype=pl.List(pl.UInt32)),
+        pl.Series("ends_2in1", [[2, 3, 3]], dtype=pl.List(pl.UInt32)),
+        pl.Series("starts_1in2", [[1]], dtype=pl.List(pl.UInt32)),
+        pl.Series("ends_1in2", [[3]], dtype=pl.List(pl.UInt32)),
+        pl.Series("mask_2in1", [[True, True, True, False]], dtype=pl.List(pl.Boolean)),
+        pl.Series("mask_1in2", [[False, True, False]], dtype=pl.List(pl.Boolean)),
+        pl.Series("lengths_2in1", [[2, 1, 1]], dtype=pl.List(pl.UInt32)),
+        pl.Series("lengths_1in2", [[2]], dtype=pl.List(pl.UInt32)),
+    ]
+)
+
+
+def test_four_quadrants():
+    res, _ = _four_quadrants_data(
+        df.lazy(),
+        df2.lazy(),
+        "_2",
+        STARTS_PROPERTY,
+        ENDS_PROPERTY,
+        STARTS_PROPERTY,
+        ENDS_PROPERTY,
+    )
+    print(res.collect())
+    assert res.collect().frame_equal(expected_result)
