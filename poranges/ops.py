@@ -117,29 +117,20 @@ def repeat_other(columns, starts, diffs):
         pl.col(columns)
         .explode()
         .take(
-            arange_multi(diffs=diffs, starts=starts)
+            pl.int_ranges(
+                start=starts,
+                end=starts.add(diffs)
+            ).explode()
         )
     )
 
 
 def arange_multi(*, starts: pl.Expr, diffs: pl.Expr) -> pl.Expr:
     return (
-        starts.filter(diffs.gt(0))
-        .explode()
-        .repeat_by(diffs.explode().filter(diffs.explode().gt(0)))
-        .explode()
-        .add(
-            pl.arange(0, diffs.explode().sum())
-            .explode()
-            .sub(
-                diffs.filter(diffs.gt(0))
-                .explode()
-                .cumsum()
-                .sub(diffs.explode().filter(diffs.gt(0)))
-                .repeat_by(diffs.explode().filter(diffs.gt(0)))
-                .explode()
-            )
-        )
+        pl.int_ranges(
+            start=starts,
+            end=starts.add(diffs)
+        ).explode().drop_nulls()
     )
 
 
@@ -160,44 +151,49 @@ def join(
     starts_2_renamed = df_2_column_names_after_join[df2.columns.index(starts_2)]
     ends_2_renamed = df_2_column_names_after_join[df2.columns.index(ends_2)]
 
-    return (
+    four_quadrants = (
         j.with_columns(
             find_starts_in_ends(starts, ends, starts_2_renamed, ends_2_renamed)
         )
         .with_columns(compute_masks())
         .with_columns(apply_masks())
         .with_columns(add_lengths())
-        .select(
-            pl.concat(
-                [
-                    mask_and_repeat_frame(
-                        df.columns,
-                        MASK_2IN1_PROPERTY,
-                        STARTS_2IN1_PROPERTY,
-                        ENDS_2IN1_PROPERTY,
-                    ),
-                    repeat_other(
-                        df.columns, pl.col(STARTS_1IN2_PROPERTY).explode(), pl.col(LENGTHS_1IN2_PROPERTY).explode()
-                    ),
-                ]
-            ),
-            pl.concat(
-                [
-                    repeat_other(
-                        df_2_column_names_after_join,
-                        pl.col(STARTS_2IN1_PROPERTY).explode(),
-                        pl.col(LENGTHS_2IN1_PROPERTY).explode(),
-                    ),
-                    mask_and_repeat_frame(
-                        df_2_column_names_after_join,
-                        MASK_1IN2_PROPERTY,
-                        STARTS_1IN2_PROPERTY,
-                        ENDS_1IN2_PROPERTY,
-                    ),
-                ]
-            ),
+    )
+    # we use implode so we can use the cross product join; seemingly the only way to horizontally concat a lazy-frame
+    top_left = four_quadrants.select(
+        mask_and_repeat_frame(
+            df.columns,
+            MASK_2IN1_PROPERTY,
+            STARTS_2IN1_PROPERTY,
+            ENDS_2IN1_PROPERTY,
         )
     )
+    bottom_left = four_quadrants.select(
+        repeat_other(
+            df.columns, pl.col(STARTS_1IN2_PROPERTY).explode(), pl.col(LENGTHS_1IN2_PROPERTY).explode()
+        )
+    )
+    top_right = four_quadrants.select(
+        repeat_other(
+            df_2_column_names_after_join,
+            pl.col(STARTS_2IN1_PROPERTY).explode(),
+            pl.col(LENGTHS_2IN1_PROPERTY).explode(),
+        )
+    )
+    bottom_right = four_quadrants.select(
+        mask_and_repeat_frame(
+            df_2_column_names_after_join,
+            MASK_1IN2_PROPERTY,
+            STARTS_1IN2_PROPERTY,
+            ENDS_1IN2_PROPERTY,
+        )
+    )
+
+    # we cannot horizontally concat a lazy-frame, so we use with_context
+    return pl.concat([top_left, bottom_left]).with_context(pl.concat([top_right, bottom_right])).select(
+        pl.all()
+    )
+
 
 
 def overlap(
@@ -243,18 +239,6 @@ def closest(
         distance_col: Optional[str] = None
 ):
     _distance_col = "distance" if distance_col is None else distance_col
-    if include_overlapping:
-        overlaps = join(
-            df=df,
-            df2=df2,
-            suffix=suffix,
-            starts=starts,
-            ends=ends,
-            starts_2=starts_2,
-            ends_2=ends_2,
-        ).with_columns(
-            pl.lit(0, dtype=pl.UInt64).alias("distance")
-        )
 
     if k > 0 and direction == "left":
         _closest = closest_nonoverlapping_left(
@@ -300,22 +284,25 @@ def closest(
         raise ValueError("`direction` must be one of 'left', 'right', or 'any'")
 
     if include_overlapping:
+        overlaps = join(
+            df=df,
+            df2=df2,
+            suffix=suffix,
+            starts=starts,
+            ends=ends,
+            starts_2=starts_2,
+            ends_2=ends_2,
+        ).with_columns(
+                pl.lit(0).cast(pl.UInt64).alias(_distance_col)
+        )
         _k_closest = pl.concat([overlaps, _closest]).sort(_distance_col).groupby(df.columns).agg(
             pl.all().head(k)
         ).explode(pl.exclude(df.columns))
-    elif _distance_col is None:
-        _k_closest = _closest.sort(_distance_col).groupby(df.columns).agg(
-            pl.all().head(k)
-        ).explode(pl.exclude(df.columns))
+        if distance_col is None:
+            _k_closest = _k_closest.drop(_distance_col)
     else:
         _k_closest = _closest
-
-    if distance_col is None:
-        final = _k_closest.drop(_distance_col)
-    else:
-        final = _k_closest
-
-    return final
+    return _k_closest
 
 
 def closest_nonoverlapping_left(
@@ -495,8 +482,10 @@ def merge(
     DataFrame
         DataFrame with merged intervals.
     """
+    if df.first().collect().shape[0] == 0:
+        return df
+
     lazy_df = df.lazy().sort([starts, ends])
-    print(lazy_df.collect())
 
     if by is None:
         lazy_df = lazy_df.select(pl.all().implode()).with_row_count(ROW_NUMBER).select(pl.all().explode())
@@ -514,7 +503,6 @@ def merge(
             _cluster_borders_expr(merge_bookended, min_distance, starts).alias("cluster_borders")
         )
         .groupby(grpby_ks).agg(
-            # pl.col(grpby_ks).repeat_by(pl.col("starts").list.lengths()).suffix("_repeated"),
             pl.col(starts).explode().filter(
                 pl.col("cluster_borders").explode().slice(0, pl.col("cluster_borders").explode().len() - 1),
             ).alias("cluster_starts"),
@@ -528,9 +516,7 @@ def merge(
             pl.exclude(grpby_ks).explode(),
             )
     )
-    print(ordered.collect())
     cluster_frame = ordered.explode("cluster_starts", "cluster_ends", "take")
-    print(cluster_frame.collect())
 
     rename = {
         "cluster_starts": starts,

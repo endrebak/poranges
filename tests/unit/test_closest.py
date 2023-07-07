@@ -58,7 +58,8 @@ def test_arange_multi():
             diffs=pl.col("lengths").filter(pl.col("lengths").gt(0))
         )
     )
-    assert res.collect()["starts"].to_list() == [1, 2, 1, 2, 3]
+    print(res.collect())
+    assert res.collect()["int_range"].to_list() == [1, 2, 1, 2, 3]
 
 
 def test_closest_nonoverlapping_right():
@@ -93,6 +94,7 @@ def test_closest():
         k=2,
         distance_col="distance"
     )
+    print(res2.sort(df.columns).collect())
 
     expected = pl.DataFrame(
         [
@@ -105,4 +107,5 @@ def test_closest():
             pl.Series("distance", [0, 2, 2, 1, 0, 0, 0, 1], dtype=pl.UInt64),
         ]
     )
+    print(expected)
     assert res2.collect().sort(res2.columns).frame_equal(expected)
