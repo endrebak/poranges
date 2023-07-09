@@ -1,4 +1,18 @@
 import polars as pl
+
+df = pl.DataFrame(
+    [
+        pl.Series("k", ['B', 'A'], dtype=pl.Utf8),
+        pl.Series("a", [[5], [1, 30]], dtype=pl.List(pl.Int64)),
+        pl.Series("b", [[7], [2, 40]], dtype=pl.List(pl.Int64)),
+        pl.Series("mask_2in1", [[True, True], [False, False]], dtype=pl.List(pl.Boolean)),
+        pl.Series("starts_2in1", [[0, 0], [None]], dtype=pl.List(pl.UInt32)),
+        pl.Series("ends_2in1", [[1, 1], [None]], dtype=pl.List(pl.UInt32)),
+    ]
+)
+
+raise
+
 df = pl.DataFrame({"starts": [0], "ends": [1]})
 df2 = pl.DataFrame({"starts": [0], "ends": [1]})
 import poranges as pf

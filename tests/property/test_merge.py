@@ -14,9 +14,8 @@ from tests.property.generate_intervals import interval_df
 @given(df=interval_df())
 def test_merge(df):
     res_pyranges = to_pyranges(df).merge().df
-    print(df)
-    res_poranges = df.interval.merge(starts="Start", ends="End", by=["Chromosome"]).collect()
+    res_poranges = df.interval.merge(starts="Start", ends="End", by=["Chromosome"], keep_original_columns=False).collect().to_pandas()
 
-    print(res_poranges)
-    print(res_pyranges)
+    print("PORANGES:", res_poranges)
+    print("PYRANGES:", res_pyranges)
     compare_frames(pd_df=res_pyranges, pl_df=res_poranges, comparison_cols=("Start", "End"))
