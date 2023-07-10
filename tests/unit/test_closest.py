@@ -109,3 +109,66 @@ def test_closest():
     )
     print(expected)
     assert res2.collect().sort(res2.columns).frame_equal(expected)
+
+
+df = pl.DataFrame(
+    {
+        "chromosome": ["chr2", "chr1", "chr1", "chr2"],
+        "starts": [4, 1, 10, 7],
+        "ends": [5, 4, 11, 8],
+    }
+)
+
+df2 = pl.DataFrame(
+    {
+        "chromosome": ["chr1", "chr2", "chr1", "chr1"],
+        "starts": [5, 0, 8, 6],
+        "ends": [7, 2, 9, 10],
+    }
+)
+
+
+def otest_closest_groupby():
+    res2 = df.interval.closest(
+        df2,
+        on=("starts", "ends"),
+        k=2,
+        distance_col="distance",
+        by=["chromosome"]
+    )
+    print(df)
+    print(df2)
+    print(res2.sort(df.columns).collect())
+
+    expected = pl.DataFrame(
+        {"a": []}
+    )
+    print(expected)
+    raise
+    assert res2.collect().sort(res2.columns).frame_equal(expected)
+
+
+def test_closest_nonoverlapping_right_groupby():
+    res2 = closest_nonoverlapping_right(
+        df.lazy(),
+        df2.lazy(),
+        ends="ends",
+        starts_2="starts",
+        k=2,
+        distance_col="distance",
+        by=["chromosome"]
+    )
+    print(res2.collect().to_init_repr())
+    assert res2.collect().frame_equal(
+        pl.DataFrame(
+            [
+                pl.Series("chromosome", ['chr1', 'chr1', 'chr1', 'chr1', 'chr1'], dtype=pl.Utf8),
+                pl.Series("starts", [4, 4, 1, 1, 7], dtype=pl.Int64),
+                pl.Series("ends", [5, 5, 4, 4, 8], dtype=pl.Int64),
+                pl.Series("chromosome_right", ['chr1', 'chr1', 'chr1', 'chr1', 'chr1'], dtype=pl.Utf8),
+                pl.Series("starts_right", [5, 6, 5, 6, 8], dtype=pl.Int64),
+                pl.Series("ends_right", [7, 10, 7, 10, 9], dtype=pl.Int64),
+                pl.Series("distance", [1, 2, 2, 3, 1], dtype=pl.Int64),
+            ]
+        )
+    )

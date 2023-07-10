@@ -2,190 +2,9 @@ from typing import List, Literal, Optional, Tuple
 
 import polars as pl
 
-STARTS_PROPERTY = "starts"
-ENDS_PROPERTY = "ends"
-STARTS2_PROPERTY = "starts_2"
-ENDS2_PROPERTY = "ends_2"
-
-STARTS_2IN1_PROPERTY = "starts_2in1"
-ENDS_2IN1_PROPERTY = "ends_2in1"
-STARTS_1IN2_PROPERTY = "starts_1in2"
-ENDS_1IN2_PROPERTY = "ends_1in2"
-MASK_1IN2_PROPERTY = "mask_1in2"
-MASK_2IN1_PROPERTY = "mask_2in1"
-LENGTHS_2IN1_PROPERTY = "lengths_2in1"
-LENGTHS_1IN2_PROPERTY = "lengths_1in2"
-
-
-def search(col1: str, col2: str, side: Literal["any", "right", "left"] = "left") -> pl.Expr:
-    return pl.col(col1).explode().search_sorted(pl.col(col2).explode(), side=side)
-    # return pl.when(
-    #     pl.col(col2).list.lengths().ne(1).all()
-    # ).then(
-    #     pl.col(col1).explode().search_sorted(pl.col(col2).explode(), side=side)
-    # ).otherwise(
-    #     pl.col(col1).explode().search_sorted(
-    #         pl.col(col2).list.concat(pl.col(col2)).explode(),
-    #         side=side
-    #     )
-    # )
-
-
-def lengths(starts: str, ends: str, outname: str = "") -> pl.Expr:
-    return pl.col(ends).explode().sub(pl.col(starts).explode()).explode().alias(outname)
-
-
-def find_starts_in_ends(
-    starts, ends, starts_2, ends_2, closed: bool = False
-) -> List[pl.Expr]:
-    side = "right" if closed else "left"
-
-    return [
-        search(starts_2, starts, side="left").alias(STARTS_2IN1_PROPERTY),
-        search(starts_2, ends, side=side).alias(ENDS_2IN1_PROPERTY),
-        search(starts, starts_2, side="right").alias(STARTS_1IN2_PROPERTY),
-        search(starts, ends_2, side=side).alias(ENDS_1IN2_PROPERTY),
-    ]
-
-
-def compute_masks() -> List[pl.Expr]:
-    return [
-        pl.col(ENDS_2IN1_PROPERTY)
-        .explode()
-        .gt(pl.col(STARTS_2IN1_PROPERTY).explode())
-        .alias(MASK_2IN1_PROPERTY),
-        pl.col(ENDS_1IN2_PROPERTY)
-        .explode()
-        .gt(pl.col(STARTS_1IN2_PROPERTY).explode())
-        .alias(MASK_1IN2_PROPERTY),
-    ]
-
-
-def apply_masks() -> List[pl.Expr]:
-    return [
-        pl.col([STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY])
-        .explode()
-        .filter(pl.col(MASK_2IN1_PROPERTY).explode()),
-        pl.col([STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY])
-        .explode()
-        .filter(pl.col(MASK_1IN2_PROPERTY).explode())
-    ]
-
-
-def add_length(starts: str, ends: str, alias: str) -> pl.Expr:
-    return (
-        pl.col(ends)
-        .explode()
-        .sub(pl.col(starts).explode())
-        .alias(alias)
-        .implode()
-    )
-
-
-def add_lengths() -> List[pl.Expr]:
-    return (
-        [
-            add_length(STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY, LENGTHS_2IN1_PROPERTY),
-            add_length(STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, LENGTHS_1IN2_PROPERTY)
-        ]
-    )
-
-
-def repeat_frame(columns, startsin, endsin) -> pl.Expr:
-    return (
-        pl.col(columns)
-        .explode()
-        .repeat_by(pl.col(endsin).explode() - pl.col(startsin).explode())
-        .explode()
-    )
-
-
-def mask_and_repeat_frame(columns, mask, startsin, endsin) -> pl.Expr:
-    return (
-        pl.col(columns).explode()
-        .filter(pl.col(mask).explode())
-        .repeat_by(
-            pl.when(pl.col(mask).list.any()).then(
-                (pl.col(endsin).explode().drop_nulls() - pl.col(startsin).explode().drop_nulls())
-            ).otherwise(
-                pl.lit(0)
-            )
-        ).explode()
-    )
-
-
-def repeat_other(columns, starts, diffs):
-    return (
-        pl.col(columns)
-        .explode()
-        .take(
-            pl.int_ranges(
-                start=starts,
-                end=starts.add(diffs)
-            ).explode().drop_nulls()
-        )
-    )
-
-
-def arange_multi(*, starts: pl.Expr, diffs: pl.Expr) -> pl.Expr:
-    return (
-        pl.int_ranges(
-            start=starts,
-            end=starts.add(diffs)
-        ).explode().drop_nulls()
-    )
-
-
-def _get_new_starts_ends_names(
-        starts: str, ends: str, starts_2: str, ends_2: str, suffix: str
-) -> Tuple[str, str]:
-    new_starts = starts + suffix if starts == starts_2 else starts_2
-    new_ends = ends + suffix if ends == ends_2 else ends_2
-    return new_starts, new_ends
-
-
-def _four_quadrants_data(
-        j: pl.LazyFrame,
-        starts: str,
-        ends: str,
-        starts_2_renamed: str,
-        ends_2_renamed: str,
-        grpby_ks: List[str]
-) -> pl.LazyFrame:
-    # print(j.collect())
-    four_quadrants = (
-        j.groupby(grpby_ks).agg(
-            [pl.all().explode()] + find_starts_in_ends(starts, ends, starts_2_renamed, ends_2_renamed)
-        )
-        .groupby(grpby_ks).agg(
-            [pl.all().explode()] + compute_masks()
-        )
-        .groupby(grpby_ks).agg(
-            [
-                pl.exclude(
-                    STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY,
-                ).explode()
-            ] + apply_masks()
-        )
-        .groupby(grpby_ks).agg(
-            [pl.all()] + add_lengths()
-        )
-        .explode(pl.exclude(grpby_ks))
-    )
-
-    return four_quadrants
-
-
-def find_new_colnames(
-        cols: List[str],
-        cols2: List[str],
-        suffix: str,
-        by: Optional[List[str]] = None
-) -> List[str]:
-    possibly_duplicated_cols = cols2 if by is None else [c for c in cols2 if not c in by]
-    return [
-        col2 + suffix if col2 in set(cols) else col2 for col2 in possibly_duplicated_cols
-   ]
+from poranges.constants import ROW_NUMBER_PROPERTY
+from poranges.four_quadrants_data import FourQuadrantsData
+from poranges.groupby_join_result import GroupByJoinResult
 
 
 def join(
@@ -196,120 +15,19 @@ def join(
     ends: str,
     starts_2: str,
     ends_2: str,
-    by: Optional[List[str]] = None
+    by: Optional[List[str]] = None,
+    closed_intervals: bool = False
 ) -> pl.LazyFrame:
-    grpby_ks, j = _groupby_join(by, df, df2, ends, ends_2, starts, starts_2, suffix)
-    at_least_one_df_nonempty = df.first().collect().shape[0] == 0 or df2.first().collect().shape[0] == 0
-    # return nothing if one df is nonempty or j is nonempty.
-    # this is to avoid having to make the downstream code more complicated by checking for empty data
-    if at_least_one_df_nonempty or j.first().collect().shape[0] == 0:
-        return j
+    j = GroupByJoinResult(df, df2, starts, ends, starts_2, ends_2, suffix, by)
+    if j.empty():
+        return j.joined
 
-    starts_2_renamed, ends_2_renamed = _get_new_starts_ends_names(
-        starts, ends, starts_2, ends_2, suffix
-    )
-
-    df_2_column_names_after_join = find_new_colnames(df.columns, df2.columns, suffix, by=by)
-    df_column_names_without_groupby_ks = [c for c in df.columns if c not in grpby_ks]
-    df_2_column_names_without_groupby_ks = [c for c in df_2_column_names_after_join if c not in grpby_ks]
-
-    four_quadrants = _four_quadrants_data(
+    four_quadrants = FourQuadrantsData(
         j=j,
-        starts=starts,
-        ends=ends,
-        starts_2_renamed=starts_2_renamed,
-        ends_2_renamed=ends_2_renamed,
-        grpby_ks=grpby_ks
+        closed_intervals=closed_intervals
     )
 
-    top_left = (
-        four_quadrants
-        .filter(pl.col(MASK_2IN1_PROPERTY).list.any())
-        .groupby(grpby_ks).agg(
-            mask_and_repeat_frame(
-                [c for c in df_column_names_without_groupby_ks if
-                 c not in [MASK_2IN1_PROPERTY, STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY]],
-                mask=MASK_2IN1_PROPERTY,
-                startsin=STARTS_2IN1_PROPERTY,
-                endsin=ENDS_2IN1_PROPERTY
-            )
-        ).explode(df_column_names_without_groupby_ks).drop_nulls()
-    ).sort(grpby_ks)
-    # print("top_left\n", top_left.collect())
-
-    bottom_left = (
-        four_quadrants
-        .groupby(grpby_ks).agg(
-            repeat_other(
-                df_column_names_without_groupby_ks, pl.col(STARTS_1IN2_PROPERTY).explode(),
-                pl.col(LENGTHS_1IN2_PROPERTY).explode()
-            )
-        ).explode(df_column_names_without_groupby_ks).drop_nulls()
-    ).sort(grpby_ks)
-    # print("bottom_left\n", bottom_left.collect())
-
-    top_right = (
-        four_quadrants
-        .groupby(grpby_ks).agg(
-            repeat_other(
-                df_2_column_names_after_join,
-                pl.col(STARTS_2IN1_PROPERTY).explode(),
-                pl.col(LENGTHS_2IN1_PROPERTY).explode(),
-            )
-        ).explode(df_2_column_names_without_groupby_ks).drop_nulls()
-    ).sort(grpby_ks)
-
-    # print(
-    #     four_quadrants.groupby(grpby_ks).agg(
-    #         pl.col(
-    #             df_2_column_names_without_groupby_ks + [
-    #                 MASK_2IN1_PROPERTY,
-    #                 STARTS_2IN1_PROPERTY,
-    #                 ENDS_2IN1_PROPERTY,
-    #             ]
-    #         ).explode()
-    #     ).collect()
-    # )
-    # print("top_right\n", top_right.collect())
-    bottom_right = (
-        four_quadrants
-        .filter(pl.col(MASK_1IN2_PROPERTY).list.any())
-        .groupby(grpby_ks).agg(
-            mask_and_repeat_frame(
-                df_2_column_names_without_groupby_ks,
-                MASK_1IN2_PROPERTY,
-                STARTS_1IN2_PROPERTY,
-                ENDS_1IN2_PROPERTY,
-            )
-        ).explode(df_2_column_names_without_groupby_ks).drop_nulls()
-    ).sort(grpby_ks)
-    # print("bottom_right")
-    # print(bottom_right.collect())
-
-    # we cannot horizontally concat a lazy-frame, so we use with_context
-    return pl.concat(
-        [top_left, bottom_left]
-    ).with_context(
-        pl.concat([top_right, bottom_right])
-    ).select(
-        pl.all()
-    ).drop(grpby_ks if by is None else [])
-
-
-def _groupby_join(by, df, df2, ends, ends_2, starts, starts_2, suffix):
-    if by is None:
-        grpby_ks = [ROW_NUMBER]
-        sorted_collapsed = df.sort(starts, ends).select(pl.all().implode())
-        sorted_collapsed_2 = df2.sort(starts_2, ends_2).select(pl.all().implode())
-        j = sorted_collapsed.join(
-            sorted_collapsed_2, how="cross", suffix=suffix
-        ).with_row_count(ROW_NUMBER)
-    else:
-        grpby_ks = by
-        sorted_collapsed = df.sort(starts, ends).groupby(grpby_ks).all()
-        sorted_collapsed_2 = df2.sort(starts_2, ends_2).groupby(grpby_ks).all()
-        j = sorted_collapsed.join(sorted_collapsed_2, on=grpby_ks, suffix=suffix)
-    return grpby_ks, j
+    return four_quadrants.overlapping_pairs()
 
 
 def overlap(
@@ -319,54 +37,20 @@ def overlap(
         ends: str,
         starts_2: str,
         ends_2: str,
-        by: Optional[List[str]] = None
+        by: Optional[List[str]] = None,
+        closed_intervals: bool = False
 ) -> pl.LazyFrame:
     suffix = "_right__"
-    grpby_ks, j = _groupby_join(by, df, df2, ends, ends_2, starts, starts_2, suffix)
-    starts_2_renamed, ends_2_renamed = _get_new_starts_ends_names(
-        starts, ends, starts_2, ends_2, suffix
-    )
-    four_quadrants = _four_quadrants_data(
+    j = GroupByJoinResult(df, df2, starts, ends, starts_2, ends_2, suffix, by)
+    if j.empty():
+        return j.joined
+
+    four_quadrants = FourQuadrantsData(
         j=j,
-        starts=starts,
-        ends=ends,
-        starts_2_renamed=starts_2_renamed,
-        ends_2_renamed=ends_2_renamed,
-        grpby_ks=grpby_ks
+        closed_intervals=closed_intervals
     )
 
-    df_column_names_without_groupby_ks = [c for c in df.columns if c not in grpby_ks]
-
-    top_left = (
-        four_quadrants
-        .filter(pl.col(MASK_2IN1_PROPERTY).list.any())
-        .groupby(grpby_ks).agg(
-            pl.col(df_column_names_without_groupby_ks).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode()),
-            # pl.col(MASK_2IN1_PROPERTY).inspect()
-            # mask_and_repeat_frame(
-            #     [c for c in df_column_names_without_groupby_ks if
-            #      c not in [MASK_2IN1_PROPERTY, STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY]],
-            #     mask=MASK_2IN1_PROPERTY,
-            #     startsin=STARTS_2IN1_PROPERTY,
-            #     endsin=ENDS_2IN1_PROPERTY
-            # )
-        ).explode(df_column_names_without_groupby_ks).drop_nulls()
-    ).sort(grpby_ks)
-    # print("top_left\n", top_left.collect())
-
-    bottom_left = (
-        four_quadrants
-        .groupby(grpby_ks).agg(
-            repeat_other(
-                columns=df_column_names_without_groupby_ks,
-                starts=pl.col(STARTS_1IN2_PROPERTY).explode().filter(~pl.col(STARTS_1IN2_PROPERTY).explode().is_duplicated()).explode(),
-                diffs=pl.col(LENGTHS_1IN2_PROPERTY).explode().filter(~pl.col(STARTS_1IN2_PROPERTY).explode().is_duplicated()).explode(),
-            )
-        ).explode(df_column_names_without_groupby_ks).drop_nulls()
-    ).sort(grpby_ks)
-    # print("bottom_left\n", bottom_left.collect())
-
-    return pl.concat([top_left, bottom_left]).drop(grpby_ks if by is None else []).unique(keep="first")
+    return four_quadrants.overlaps()
 
 
 def closest(
@@ -381,9 +65,12 @@ def closest(
         include_overlapping: bool = True,
         suffix: str = "_right",
         k: int = 1,
-        distance_col: Optional[str] = None
+        distance_col: Optional[str] = None,
+        by: Optional[List[str]] = None
 ):
     _distance_col = "distance" if distance_col is None else distance_col
+
+    j = _groupby_join(by, df, df2, ends, ends_2, starts, starts_2, suffix)
 
     if k > 0 and direction == "left":
         _closest = closest_nonoverlapping_left(
@@ -437,6 +124,7 @@ def closest(
             ends=ends,
             starts_2=starts_2,
             ends_2=ends_2,
+            by=by
         ).with_columns(
                 pl.lit(0).cast(pl.UInt64).alias(_distance_col)
         )
@@ -529,11 +217,12 @@ def closest_nonoverlapping_right(
         starts_2: str,
         suffix: str = "_right",
         k: int = 1,
-        distance_col: Optional[str] = None
+        distance_col: Optional[str] = None,
+        by: Optional[List[str]] = None
 ):
     sorted_collapsed = df.select([pl.all().implode()])
     sorted_collapsed_2 = df2.sort(starts_2).select([pl.all().implode()])
-    j = sorted_collapsed.join(sorted_collapsed_2, how="cross", suffix=suffix)
+    j = sorted_collapsed.join(sorted_collapsed_2, how="cross", suffix=suffix, by=by)
 
     df_2_column_names_after_join = j.columns[len(df.columns) :]
     starts_2_renamed = df_2_column_names_after_join[df2.columns.index(starts_2)]
@@ -588,8 +277,6 @@ def closest_nonoverlapping_right(
     return res
 
 
-ROW_NUMBER = "__row_number__"
-
 def merge(
         df: pl.LazyFrame,
         starts: str,
@@ -633,8 +320,8 @@ def merge(
     lazy_df = df.lazy().sort([starts, ends])
 
     if by is None:
-        lazy_df = lazy_df.select(pl.all().implode()).with_row_count(ROW_NUMBER).select(pl.all().explode())
-        grpby_ks = [ROW_NUMBER]
+        lazy_df = lazy_df.select(pl.all().implode()).with_row_count(ROW_NUMBER_PROPERTY).select(pl.all().explode())
+        grpby_ks = [ROW_NUMBER_PROPERTY]
     else:
         grpby_ks = by
 
@@ -692,7 +379,7 @@ def merge(
         )
 
     if by is None:
-        cluster_frame = cluster_frame.drop(ROW_NUMBER)
+        cluster_frame = cluster_frame.drop(ROW_NUMBER_PROPERTY)
 
     if not keep_original_columns:
         cluster_frame = cluster_frame.select(by + ["cluster_starts", "cluster_ends"])

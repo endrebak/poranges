@@ -3,15 +3,7 @@ import poranges.register_interval_namespace
 
 import polars as pl
 
-from poranges.ops import (
-    compute_masks,
-    repeat_other,
-    mask_and_repeat_frame,
-    apply_masks,
-    add_lengths,
-    find_starts_in_ends,
-    join, _four_quadrants_data,
-)
+from poranges.ops import join
 
 CHROMOSOME_PROPERTY = "chromosome"
 CHROMOSOME2_PROPERTY = "chromosome_2"

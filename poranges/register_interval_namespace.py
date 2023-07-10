@@ -58,7 +58,8 @@ class IntervalFrame:
             left_on: Optional[Tuple[str, str]] = None,
             suffix: str = "_right",
             k: int = 1,
-            distance_col: Optional[str] = None
+            distance_col: Optional[str] = None,
+            by: Optional[List[str]] = None
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
@@ -71,7 +72,8 @@ class IntervalFrame:
             ends_2=ends_2,
             suffix=suffix,
             k=k,
-            distance_col=distance_col
+            distance_col=distance_col,
+            by=by
         )
 
     def merge(
