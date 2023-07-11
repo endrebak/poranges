@@ -2,6 +2,9 @@ from typing import Optional, Tuple, List
 
 import polars as pl
 import poranges.ops
+from poranges.constants import DUMMY_SUFFIX_PROPERTY
+from poranges.overlapping_intervals import OverlappingIntervals
+from poranges.groupby_join_result import GroupByJoinResult
 
 
 @pl.api.register_dataframe_namespace("interval")
@@ -16,20 +19,21 @@ class IntervalFrame:
             right_on: Optional[Tuple[str, str]] = None,
             left_on: Optional[Tuple[str, str]] = None,
             suffix: str = "_right",
-            by: Optional[List[str]] = None
+            by: Optional[List[str]] = None,
+            closed_intervals: bool = False
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        return poranges.ops.join(
-            self._df.lazy(),
-            other.lazy(),
-            starts=starts,
-            ends=ends,
-            starts_2=starts_2,
-            ends_2=ends_2,
-            suffix=suffix,
-            by = by
+        j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, suffix, by)
+        if j.empty():
+            return j.joined
+
+        four_quadrants = OverlappingIntervals(
+            j=j,
+            closed_intervals=closed_intervals
         )
+
+        return four_quadrants.overlapping_pairs()
 
     def overlap(
             self,
@@ -37,17 +41,21 @@ class IntervalFrame:
             on: Optional[Tuple[str, str]] = None,
             right_on: Optional[Tuple[str, str]] = None,
             left_on: Optional[Tuple[str, str]] = None,
+            by: Optional[List[str]] = None,
+            closed_intervals: bool = False
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        return poranges.ops.overlap(
-            self._df.lazy(),
-            other.lazy(),
-            starts=starts,
-            ends=ends,
-            starts_2=starts_2,
-            ends_2=ends_2,
+        j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, DUMMY_SUFFIX_PROPERTY, by)
+        if j.empty():
+            return j.joined
+
+        four_quadrants = OverlappingIntervals(
+            j=j,
+            closed_intervals=closed_intervals
         )
+
+        return four_quadrants.overlaps()
 
     def closest(
             self,

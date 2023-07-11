@@ -4,12 +4,13 @@ import polars as pl
 
 from poranges.constants import STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY, STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, \
     MASK_2IN1_PROPERTY, MASK_1IN2_PROPERTY, LENGTHS_2IN1_PROPERTY, LENGTHS_1IN2_PROPERTY
+from poranges.ops import search, add_length
 
 if TYPE_CHECKING:
     from poranges.groupby_join_result import GroupByJoinResult
 
 
-class FourQuadrantsData:
+class OverlappingIntervals:
     """The data needed to compute paired overlaps between two sets of ranges.
 
     This class is used to compute things like joins and overlaps between ranges."""
@@ -46,10 +47,6 @@ class FourQuadrantsData:
         )
 
     @staticmethod
-    def search(col1: str, col2: str, side: Literal["any", "right", "left"] = "left") -> pl.Expr:
-        return pl.col(col1).explode().search_sorted(pl.col(col2).explode(), side=side)
-
-    @staticmethod
     def lengths(starts: str, ends: str, outname: str = "") -> pl.Expr:
         return pl.col(ends).explode().sub(pl.col(starts).explode()).explode().alias(outname)
 
@@ -57,10 +54,10 @@ class FourQuadrantsData:
         side: Literal["right", "left"] = "right" if self.closed_intervals else "left"  # type: ignore
 
         return [
-            FourQuadrantsData.search(self.j.starts_2_renamed, self.j.starts, side="left").alias(STARTS_2IN1_PROPERTY),
-            FourQuadrantsData.search(self.j.starts_2_renamed, self.j.ends, side=side).alias(ENDS_2IN1_PROPERTY),
-            FourQuadrantsData.search(self.j.starts, self.j.starts_2_renamed, side="right").alias(STARTS_1IN2_PROPERTY),
-            FourQuadrantsData.search(self.j.starts, self.j.ends_2_renamed, side=side).alias(ENDS_1IN2_PROPERTY),
+            search(self.j.starts_2_renamed, self.j.starts, side="left").alias(STARTS_2IN1_PROPERTY),
+            search(self.j.starts_2_renamed, self.j.ends, side=side).alias(ENDS_2IN1_PROPERTY),
+            search(self.j.starts, self.j.starts_2_renamed, side="right").alias(STARTS_1IN2_PROPERTY),
+            search(self.j.starts, self.j.ends_2_renamed, side=side).alias(ENDS_1IN2_PROPERTY),
         ]
 
     @staticmethod
@@ -87,22 +84,13 @@ class FourQuadrantsData:
             .filter(pl.col(MASK_1IN2_PROPERTY).explode())
         ]
 
-    @staticmethod
-    def add_length(starts: str, ends: str, alias: str) -> pl.Expr:
-        return (
-            pl.col(ends)
-            .explode()
-            .sub(pl.col(starts).explode())
-            .alias(alias)
-            .implode()
-        )
 
     @staticmethod
     def add_lengths() -> List[pl.Expr]:
         return (
             [
-                FourQuadrantsData.add_length(STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY, LENGTHS_2IN1_PROPERTY),
-                FourQuadrantsData.add_length(STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, LENGTHS_1IN2_PROPERTY)
+                add_length(STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY, LENGTHS_2IN1_PROPERTY),
+                add_length(STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, LENGTHS_1IN2_PROPERTY)
             ]
         )
 
@@ -140,15 +128,6 @@ class FourQuadrantsData:
                     end=starts.add(diffs)
                 ).explode().drop_nulls()
             )
-        )
-
-    @staticmethod
-    def arange_multi(*, starts: pl.Expr, diffs: pl.Expr) -> pl.Expr:
-        return (
-            pl.int_ranges(
-                start=starts,
-                end=starts.add(diffs)
-            ).explode().drop_nulls()
         )
 
     def overlapping_pairs(self) -> "pl.LazyFrame":
@@ -239,7 +218,6 @@ class FourQuadrantsData:
         cols = self.j.colnames_without_groupby_ks()
         top_left = (
             self.data
-            .filter(pl.col(MASK_2IN1_PROPERTY).list.any())
             .groupby(grpby_ks).agg(
                 pl.col(cols).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode()),
             ).explode(cols).drop_nulls()

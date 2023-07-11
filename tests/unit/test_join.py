@@ -3,8 +3,6 @@ import poranges.register_interval_namespace
 
 import polars as pl
 
-from poranges.ops import join
-
 CHROMOSOME_PROPERTY = "chromosome"
 CHROMOSOME2_PROPERTY = "chromosome_2"
 STARTS_PROPERTY = "starts"
@@ -200,14 +198,8 @@ def chromosome_join(df, df2):
 
 
 def test_join():
-    res = join(
-        df.lazy(),
-        df2.lazy(),
-        "_2",
-        STARTS_PROPERTY,
-        ENDS_PROPERTY,
-        STARTS_PROPERTY,
-        ENDS_PROPERTY,
+    res = df.interval.join(
+        df2.lazy(), on=("starts", "ends")
     )
     expected = pl.DataFrame(
         [
@@ -282,7 +274,6 @@ def test_time():
 
 
 def test_overlap():
-    print(df.interval.join(df2.lazy(), on=("starts", "ends")).collect())
     res = df.interval.overlap(df2.lazy(), on=("starts", "ends"))
     a = res.collect().sort("starts")
     expected = pl.DataFrame(
@@ -329,7 +320,7 @@ def test_overlap():
 
 
 def test_join_groupby():
-    df = pl.LazyFrame(
+    df = pl.DataFrame(
         {
             "k": ["A", "B", "A"],
             "a": [1, 0, 30, ],
@@ -344,16 +335,9 @@ def test_join_groupby():
         }
     )
 
-    res = join(
-        df.lazy(),
-        df2.lazy(),
-        "_2",
-        "a",
-        "b",
-        "a",
-        "b",
-        by="k"
-    ).collect().sort("k", descending=True)
+    res = df.interval.join(df2.lazy(), on=("a", "b"), by="k").collect().sort("k", descending=True)
+    print(res.collect())
+    raise
 
     assert res.frame_equal(
         pl.DataFrame(
