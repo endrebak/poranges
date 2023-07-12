@@ -19,6 +19,7 @@ def compare_frames(
         print("BOTH_EMPTY")
         return
 
+    print(comparison_cols)
     pd_df = pd_df.sort_values(by=list(comparison_cols)) if not pd_df.empty else pd_df
     pl_df = pl_df.sort_values(by=list(comparison_cols)) if not pl_df.empty else pl_df
 

@@ -22,7 +22,6 @@ class ClosestIntervals:
             distance_col: Optional[str] = None,
             include_overlapping: bool = True,
     ) -> None:
-        grpby_ks = j.by
         self.j = j
         self.closed_intervals = closed_intervals
         self.direction = direction
@@ -38,6 +37,9 @@ class ClosestIntervals:
         elif k > 0 and self.direction == RIGHT_DIRECTION_PROPERTY:
             _closest = self.closest_nonoverlapping_right(k=k)
         elif k > 0 and self.direction == "any":
+            print(self.closest_nonoverlapping_left(k=k).collect())
+            print(self.closest_nonoverlapping_right(k=k).collect())
+            raise
             _closest = pl.concat([self.closest_nonoverlapping_left(k=k), self.closest_nonoverlapping_right(k=k)])
         else:
             raise ValueError("`direction` must be one of 'left', 'right', or 'any'")
@@ -46,9 +48,13 @@ class ClosestIntervals:
             overlaps = OverlappingIntervals(self.j, self.closed_intervals).overlapping_pairs().with_columns(
                     pl.lit(0, dtype=pl.UInt64).alias(self.distance_col)
                 )
+            print("overlaps")
+            print(overlaps.collect())
+            print(_closest.collect())
             _k_closest = pl.concat([overlaps, _closest]).sort(self.distance_col).groupby(self.j.df.columns).agg(
                 pl.all().head(k)
             ).explode(pl.exclude(self.j.df.columns))
+            print(_k_closest.collect())
             if not self.distance_col_given:
                 _k_closest = _k_closest.drop(self.distance_col)
         else:
@@ -58,41 +64,43 @@ class ClosestIntervals:
     def closest_nonoverlapping_left(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
         res = (
-            self.j.joined.select(
+            self.j.joined.groupby(self.j.by).agg(
                 [
-                    pl.all(),
+                    pl.all().explode(),
                     search(self.j.ends_2_renamed, self.j.starts, side=RIGHT_SIDE_PROPERTY)
                     .cast(pl.Int64)
-                    .implode()
                     .alias(CLOSEST_END_IDX_PROPERTY),
                 ]
             )
-            .with_columns(
-                pl.max([pl.col(CLOSEST_END_IDX_PROPERTY).explode() - k, pl.lit(0)])
-                .implode()
-                .alias(CLOSEST_START_IDX_PROPERTY)
-            )
-            .select(
+            .groupby(self.j.by).agg(
                 [
-                    pl.all(),
+                    pl.all().explode(),
+                    pl.max([pl.col(CLOSEST_END_IDX_PROPERTY).explode() - k, pl.lit(0)]).explode()
+                    .alias(CLOSEST_START_IDX_PROPERTY)
+                ]
+            )
+            .groupby(self.j.by).agg(
+                [
+                    pl.all().explode(),
                     add_length(
                         starts=CLOSEST_START_IDX_PROPERTY,
                         ends=CLOSEST_END_IDX_PROPERTY,
                         alias=LENGTHS_2IN1_PROPERTY,
-                    )
+                    ).explode()
                 ]
             )
-            .select(
+            .groupby(self.j.by).agg(
                 [
-                    pl.all(),
+                    pl.all().explode(),
                     arange_multi(
                         starts=pl.col(CLOSEST_START_IDX_PROPERTY).explode().filter(pl.col(LENGTHS_2IN1_PROPERTY).explode().gt(0)),
                         diffs=pl.col(LENGTHS_2IN1_PROPERTY).explode().filter(pl.col(LENGTHS_2IN1_PROPERTY).explode().gt(0))
-                    ).alias(ARANGE_COL_PROPERTY).implode()
+                    ).alias(ARANGE_COL_PROPERTY)
                 ]
-            ).select(
+            )
+            .groupby(self.j.by).agg(
                 [
-                    pl.col(self.j.df.columns).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
+                    pl.col(self.j.colnames_without_groupby_ks()).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
                     pl.col(self.j.colnames_df2_after_join())
                     .explode()
                     .take(pl.col(ARANGE_COL_PROPERTY).explode().cast(pl.UInt32))
@@ -100,12 +108,11 @@ class ClosestIntervals:
             )
         )
 
-        if self.distance_col_given:
-            res = res.with_columns(
-                pl.col(self.j.starts).sub(
-                    pl.col(self.j.ends_2_renamed).explode()
-                ).cast(pl.UInt64).add(1).alias(self.distance_col)
-            )
+        res = res.with_columns(
+            pl.col(self.j.starts).sub(
+                pl.col(self.j.ends_2_renamed).explode()
+            ).cast(pl.UInt64).add(1).alias(self.distance_col)
+        )
 
         return res
 
@@ -146,16 +153,15 @@ class ClosestIntervals:
                 ]
             )
         ).select(
-            pl.col(self.j.df.columns).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
+            pl.col(self.j.colnames_without_groupby_ks()).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
             pl.col(self.j.colnames_df2_after_join()).explode().take(pl.col(ARANGE_COL_PROPERTY).explode().cast(pl.UInt32))
         )
 
-        if self.distance_col_given:
-            res = res.with_columns(
-                pl.col(self.j.starts_2_renamed).sub(
-                    pl.col(self.j.ends).explode()
-                ).cast(pl.UInt64).add(pl.lit(1)).alias(self.distance_col)
-            )
+        res = res.with_columns(
+            pl.col(self.j.starts_2_renamed).sub(
+                pl.col(self.j.ends).explode()
+            ).cast(pl.UInt64).add(pl.lit(1)).alias(self.distance_col)
+        )
 
         return res
 

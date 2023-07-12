@@ -2,6 +2,7 @@ from typing import Optional, Tuple, List
 
 import polars as pl
 import poranges.ops
+from poranges.closest_intervals import ClosestIntervals
 from poranges.constants import DUMMY_SUFFIX_PROPERTY
 from poranges.overlapping_intervals import OverlappingIntervals
 from poranges.groupby_join_result import GroupByJoinResult
@@ -26,14 +27,14 @@ class IntervalFrame:
 
         j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, suffix, by)
         if j.empty():
-            return j.joined
+            result = j.joined
+        else:
+            result = OverlappingIntervals(
+                j=j,
+                closed_intervals=closed_intervals
+            ).overlaps()
 
-        four_quadrants = OverlappingIntervals(
-            j=j,
-            closed_intervals=closed_intervals
-        )
-
-        return four_quadrants.overlapping_pairs()
+        return result.drop([] if j.groupby_args_given else j.by)
 
     def overlap(
             self,
@@ -48,14 +49,14 @@ class IntervalFrame:
 
         j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, DUMMY_SUFFIX_PROPERTY, by)
         if j.empty():
-            return j.joined
+            result = j.joined
+        else:
+            result = OverlappingIntervals(
+                j=j,
+                closed_intervals=closed_intervals
+            ).overlaps()
 
-        four_quadrants = OverlappingIntervals(
-            j=j,
-            closed_intervals=closed_intervals
-        )
-
-        return four_quadrants.overlaps()
+        return result.drop([] if j.groupby_args_given else j.by)
 
     def closest(
             self,
@@ -71,18 +72,20 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        return poranges.ops.closest(
-            self._df.lazy(),
-            other.lazy(),
-            starts=starts,
-            ends=ends,
-            starts_2=starts_2,
-            ends_2=ends_2,
-            suffix=suffix,
-            k=k,
-            distance_col=distance_col,
-            by=by
-        )
+        j = GroupByJoinResult(df=self._df.lazy(), df2=other.lazy(), starts=starts, ends=ends, starts_2=starts_2, ends_2=ends_2, suffix=suffix, by=by)
+        if j.empty():
+            result = pl.LazyFrame(schema=j.joined.schema)
+        else:
+            result = ClosestIntervals(
+                j=j,
+                k=k,
+                distance_col=distance_col
+            ).closest()
+
+        print(result.collect())
+
+        print(j.groupby_args_given, j.by)
+        return result.drop([] if j.groupby_args_given else j.by)
 
     def merge(
             self: pl.DataFrame,

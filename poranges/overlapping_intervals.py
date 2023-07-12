@@ -236,4 +236,4 @@ class OverlappingIntervals:
             ).explode(cols).drop_nulls()
         ).sort(grpby_ks)
 
-        return pl.concat([top_left, bottom_left]).drop([] if self.j.groupby_args_given else self.j.by).unique(keep="first")
+        return pl.concat([top_left, bottom_left]).unique(keep="first")
