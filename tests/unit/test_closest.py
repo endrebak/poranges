@@ -152,6 +152,34 @@ def otest_closest_groupby():
     assert res2.collect().sort(res2.columns).frame_equal(expected)
 
 
+def test_closest_seed_319072507021907277107575597502301494047():
+    df1 = pl.DataFrame(
+        [
+            pl.Series("Chromosome", ['chrM', 'chr2', 'chrM', 'chrM', 'chr3', 'chr3', 'chrM', 'chr3'], dtype=pl.Utf8),
+            pl.Series("Start", [116455, 90281, 81395, 65896, 458984, 917853, 196993, 131084], dtype=pl.UInt64),
+            pl.Series("End", [195213, 116403, 166002, 66409, 459498, 939287, 263026, 197075], dtype=pl.UInt64),
+        ]
+    )
+    df2 = pl.DataFrame(
+        [
+            pl.Series("Chromosome", ['chr2'], dtype=pl.Utf8),
+            pl.Series("Start", [914176], dtype=pl.UInt64),
+            pl.Series("End", [957692], dtype=pl.UInt64),
+        ]
+    )
+
+    res = df1.interval.closest(
+        df2,
+        on=("Start", "End"),
+        k=2,
+        distance_col="distance",
+        by=["Chromosome"]
+    )
+
+    print(res.collect())
+
+    pass
+
 # def test_closest_nonoverlapping_right_groupby():
 #     res2 = closest_nonoverlapping_right(
 #         df.lazy(),

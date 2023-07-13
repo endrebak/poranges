@@ -37,9 +37,9 @@ class ClosestIntervals:
         elif k > 0 and self.direction == RIGHT_DIRECTION_PROPERTY:
             _closest = self.closest_nonoverlapping_right(k=k)
         elif k > 0 and self.direction == "any":
-            print(self.closest_nonoverlapping_left(k=k).collect())
-            print(self.closest_nonoverlapping_right(k=k).collect())
+            print("right", self.closest_nonoverlapping_right(k=k).collect())
             raise
+            print("left", self.closest_nonoverlapping_left(k=k).collect())
             _closest = pl.concat([self.closest_nonoverlapping_left(k=k), self.closest_nonoverlapping_right(k=k)])
         else:
             raise ValueError("`direction` must be one of 'left', 'right', or 'any'")
@@ -52,8 +52,9 @@ class ClosestIntervals:
             print(overlaps.collect())
             print(_closest.collect())
             _k_closest = pl.concat([overlaps, _closest]).sort(self.distance_col).groupby(self.j.df.columns).agg(
-                pl.all().head(k)
+                pl.all().head(k).repeat_by(pl.col(self.distance_col).len())
             ).explode(pl.exclude(self.j.df.columns))
+            print("k_closest")
             print(_k_closest.collect())
             if not self.distance_col_given:
                 _k_closest = _k_closest.drop(self.distance_col)
@@ -71,11 +72,11 @@ class ClosestIntervals:
                     .cast(pl.Int64)
                     .alias(CLOSEST_END_IDX_PROPERTY),
                 ]
-            )
+            ).inspect("closest_nonoverlapping_left {}")
             .groupby(self.j.by).agg(
                 [
                     pl.all().explode(),
-                    pl.max([pl.col(CLOSEST_END_IDX_PROPERTY).explode() - k, pl.lit(0)]).explode()
+                    pl.max_horizontal([pl.col(CLOSEST_END_IDX_PROPERTY).explode() - k, pl.lit(0)])
                     .alias(CLOSEST_START_IDX_PROPERTY)
                 ]
             )
@@ -105,65 +106,76 @@ class ClosestIntervals:
                     .explode()
                     .take(pl.col(ARANGE_COL_PROPERTY).explode().cast(pl.UInt32))
                 ]
-            )
+            ).filter(pl.col(self.j.starts).list.lengths().gt(0))
         )
 
-        res = res.with_columns(
-            pl.col(self.j.starts).sub(
-                pl.col(self.j.ends_2_renamed).explode()
-            ).cast(pl.UInt64).add(1).alias(self.distance_col)
+        res = res.select(
+            [
+                pl.all().explode(),
+                pl.col(self.j.starts).explode().sub(
+                    pl.col(self.j.ends_2_renamed).explode()
+                ).cast(pl.UInt64).add(1).alias(self.distance_col)
+            ]
         )
 
-        return res
+        return res.explode(pl.col(pl.List))
 
     def closest_nonoverlapping_right(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
         res = (
-            self.j.joined.select(
+            self.j.joined.groupby(self.j.by).agg(
                 [
-                    pl.all(),
+                    pl.all().explode(),
                     search(self.j.starts_2_renamed, self.j.ends, side=LEFT_SIDE_PROPERTY)
                     .cast(pl.Int64)
-                    .implode()
                     .alias(CLOSEST_START_IDX_PROPERTY),
                 ]
             )
-            .with_columns(
-                pl.min([pl.col(CLOSEST_START_IDX_PROPERTY).explode() + k, pl.col(self.j.starts_2_renamed).explode().len()])
-                .implode()
-                .alias(CLOSEST_END_IDX_PROPERTY)
-            )
-            .select(
+            .groupby(self.j.by).agg(
                 [
-                    pl.all(),
+                    pl.all().explode(),
+                    pl.min_horizontal([pl.col(CLOSEST_START_IDX_PROPERTY).explode() + k, pl.col(self.j.starts_2_renamed).explode().len()])
+                    .alias(CLOSEST_END_IDX_PROPERTY)
+                ]
+            ).inspect("WOOOOO {}")
+            .groupby(self.j.by).agg(
+                [
+                    pl.all().explode(),
                     add_length(
                         starts=CLOSEST_START_IDX_PROPERTY,
                         ends=CLOSEST_END_IDX_PROPERTY,
                         alias=LENGTHS_2IN1_PROPERTY
-                    )
+                    ).explode()
                 ]
-            )
-            .select(
+            ).inspect("WOOOOO2 {}")
+            .groupby(self.j.by).agg(
                 [
-                    pl.all(),
+                    pl.all().explode(),
                     arange_multi(
                         starts=pl.col(CLOSEST_START_IDX_PROPERTY).explode(),
                         diffs=pl.col(LENGTHS_2IN1_PROPERTY).explode(),
-                    ).alias(ARANGE_COL_PROPERTY).implode()
+                    ).alias(ARANGE_COL_PROPERTY)
+                ]
+            ).inspect("WOOOOO3 {}")
+            .groupby(self.j.by).agg(
+                [
+                    pl.col(self.j.colnames_without_groupby_ks()).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
+                    pl.col(self.j.colnames_df2_after_join()).explode().take(pl.col(ARANGE_COL_PROPERTY).explode().cast(pl.UInt32))
                 ]
             )
-        ).select(
-            pl.col(self.j.colnames_without_groupby_ks()).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
-            pl.col(self.j.colnames_df2_after_join()).explode().take(pl.col(ARANGE_COL_PROPERTY).explode().cast(pl.UInt32))
+        ).inspect("aaaaa {}").filter(pl.col(self.j.starts).list.lengths().gt(0))
+        print(res.collect())
+
+        res = res.select(
+            [
+                pl.all().explode(),
+                pl.col(self.j.starts_2_renamed).explode().sub(
+                    pl.col(self.j.ends).explode()
+                ).cast(pl.UInt64).add(pl.lit(1)).alias(self.distance_col)
+            ]
         )
 
-        res = res.with_columns(
-            pl.col(self.j.starts_2_renamed).sub(
-                pl.col(self.j.ends).explode()
-            ).cast(pl.UInt64).add(pl.lit(1)).alias(self.distance_col)
-        )
-
-        return res
+        return res.explode(pl.col(pl.List))
 
 
 
