@@ -72,7 +72,17 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        j = GroupByJoinResult(df=self._df.lazy(), df2=other.lazy(), starts=starts, ends=ends, starts_2=starts_2, ends_2=ends_2, suffix=suffix, by=by)
+        j = GroupByJoinResult(
+            df=self._df.lazy(),
+            df2=other.lazy(),
+            starts=starts,
+            ends=ends,
+            starts_2=starts_2,
+            ends_2=ends_2,
+            suffix=suffix,
+            by=by,
+            deduplicate_rows=True
+        )
         if j.empty():
             result = pl.LazyFrame(schema=j.joined.schema)
         else:

@@ -134,8 +134,6 @@ class OverlappingIntervals:
         if self.j.empty():
             return self.j.joined
 
-        print(self.j.joined.collect())
-
         grpby_ks = self.j.by
         df_2_column_names_after_join = self.j.colnames_df2_after_join()
         df_column_names_without_groupby_ks = self.j.colnames_without_groupby_ks()

@@ -4,7 +4,7 @@ import polars as pl
 
 from poranges.constants import DISTANCE_COL_PROPERTY, LEFT_DIRECTION_PROPERTY, RIGHT_DIRECTION_PROPERTY, \
     RIGHT_SIDE_PROPERTY, LENGTHS_2IN1_PROPERTY, CLOSEST_END_IDX_PROPERTY, CLOSEST_START_IDX_PROPERTY, \
-    ARANGE_COL_PROPERTY, LEFT_SIDE_PROPERTY
+    ARANGE_COL_PROPERTY, LEFT_SIDE_PROPERTY, COUNT_PROPERTY
 from poranges.ops import search, add_length, arange_multi
 from poranges.overlapping_intervals import OverlappingIntervals
 
@@ -37,10 +37,12 @@ class ClosestIntervals:
         elif k > 0 and self.direction == RIGHT_DIRECTION_PROPERTY:
             _closest = self.closest_nonoverlapping_right(k=k)
         elif k > 0 and self.direction == "any":
-            print("right", self.closest_nonoverlapping_right(k=k).collect())
-            raise
-            print("left", self.closest_nonoverlapping_left(k=k).collect())
-            _closest = pl.concat([self.closest_nonoverlapping_left(k=k), self.closest_nonoverlapping_right(k=k)])
+            _left = self.closest_nonoverlapping_left(k=k)
+            _right = self.closest_nonoverlapping_right(k=k)
+            print("LEFT\n", _left.collect())
+            print("RIGHT\n", _right.collect())
+            _closest = pl.concat([_left, _right])
+            print("AFTER")
         else:
             raise ValueError("`direction` must be one of 'left', 'right', or 'any'")
 
@@ -50,10 +52,15 @@ class ClosestIntervals:
                 )
             print("overlaps")
             print(overlaps.collect())
+            print("closest")
             print(_closest.collect())
-            _k_closest = pl.concat([overlaps, _closest]).sort(self.distance_col).groupby(self.j.df.columns).agg(
-                pl.all().head(k).repeat_by(pl.col(self.distance_col).len())
-            ).explode(pl.exclude(self.j.df.columns))
+            print(self.j.columns)
+            _k_closest = pl.concat([overlaps, _closest]).sort(self.distance_col).groupby(self.j.columns).agg(
+                pl.all().head(k)
+            ).explode(pl.exclude(self.j.columns)).select(
+                pl.exclude(COUNT_PROPERTY).repeat_by(pl.col(COUNT_PROPERTY)).explode()
+            )
+            print("k ", k)
             print("k_closest")
             print(_k_closest.collect())
             if not self.distance_col_given:
@@ -66,13 +73,16 @@ class ClosestIntervals:
         k = self.k if k is None else k
         res = (
             self.j.joined.groupby(self.j.by).agg(
+                pl.all().explode()
+            )
+            .groupby(self.j.by).agg(
                 [
                     pl.all().explode(),
                     search(self.j.ends_2_renamed, self.j.starts, side=RIGHT_SIDE_PROPERTY)
                     .cast(pl.Int64)
                     .alias(CLOSEST_END_IDX_PROPERTY),
                 ]
-            ).inspect("closest_nonoverlapping_left {}")
+            )
             .groupby(self.j.by).agg(
                 [
                     pl.all().explode(),
@@ -108,17 +118,23 @@ class ClosestIntervals:
                 ]
             ).filter(pl.col(self.j.starts).list.lengths().gt(0))
         )
+        print(res.collect())
 
-        res = res.select(
+        res = res.groupby(self.j.by).agg(
             [
-                pl.all().explode(),
+                pl.exclude(self.j.by).explode(),
                 pl.col(self.j.starts).explode().sub(
                     pl.col(self.j.ends_2_renamed).explode()
-                ).cast(pl.UInt64).add(1).alias(self.distance_col)
+                ).add(1).cast(pl.UInt64).alias(self.distance_col)
             ]
         )
 
-        return res.explode(pl.col(pl.List))
+        return res.select(
+            [
+                pl.col(self.j.by).repeat_by(pl.col(self.j.starts).list.lengths().explode()).explode(),
+                pl.exclude(self.j.by).explode()
+            ]
+        )
 
     def closest_nonoverlapping_right(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
@@ -137,7 +153,7 @@ class ClosestIntervals:
                     pl.min_horizontal([pl.col(CLOSEST_START_IDX_PROPERTY).explode() + k, pl.col(self.j.starts_2_renamed).explode().len()])
                     .alias(CLOSEST_END_IDX_PROPERTY)
                 ]
-            ).inspect("WOOOOO {}")
+            )
             .groupby(self.j.by).agg(
                 [
                     pl.all().explode(),
@@ -147,7 +163,7 @@ class ClosestIntervals:
                         alias=LENGTHS_2IN1_PROPERTY
                     ).explode()
                 ]
-            ).inspect("WOOOOO2 {}")
+            )
             .groupby(self.j.by).agg(
                 [
                     pl.all().explode(),
@@ -156,26 +172,26 @@ class ClosestIntervals:
                         diffs=pl.col(LENGTHS_2IN1_PROPERTY).explode(),
                     ).alias(ARANGE_COL_PROPERTY)
                 ]
-            ).inspect("WOOOOO3 {}")
+            )
             .groupby(self.j.by).agg(
                 [
                     pl.col(self.j.colnames_without_groupby_ks()).explode().repeat_by(pl.col(LENGTHS_2IN1_PROPERTY).explode()).explode().drop_nulls(),
                     pl.col(self.j.colnames_df2_after_join()).explode().take(pl.col(ARANGE_COL_PROPERTY).explode().cast(pl.UInt32))
                 ]
             )
-        ).inspect("aaaaa {}").filter(pl.col(self.j.starts).list.lengths().gt(0))
-        print(res.collect())
+        ).filter(pl.col(self.j.starts).list.lengths().gt(0))
 
-        res = res.select(
-            [
+        res = res.groupby(self.j.by).agg(
+                [
                 pl.all().explode(),
                 pl.col(self.j.starts_2_renamed).explode().sub(
                     pl.col(self.j.ends).explode()
-                ).cast(pl.UInt64).add(pl.lit(1)).alias(self.distance_col)
+                ).add(pl.lit(1)).cast(pl.UInt64).alias(self.distance_col)
             ]
         )
-
-        return res.explode(pl.col(pl.List))
-
-
-
+        return res.select(
+            [
+                pl.col(self.j.by).repeat_by(pl.col(self.j.starts).list.lengths().explode()).explode(),
+                pl.exclude(self.j.by).explode()
+            ]
+        )

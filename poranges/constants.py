@@ -27,3 +27,4 @@ CLOSEST_START_IDX_PROPERTY = "start_closest_idx"
 CLOSEST_END_IDX_PROPERTY = "end_closest_idx"
 
 ARANGE_COL_PROPERTY = "__arange__"
+COUNT_PROPERTY = "__count__"

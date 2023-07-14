@@ -2,7 +2,7 @@ from typing import Optional, List
 
 import polars as pl
 
-from poranges.constants import ROW_NUMBER_PROPERTY
+from poranges.constants import ROW_NUMBER_PROPERTY, COUNT_PROPERTY
 
 
 class GroupByJoinResult:
@@ -15,11 +15,13 @@ class GroupByJoinResult:
             starts_2: str,
             ends_2: str,
             suffix: str,
-            by: Optional[List[str]] = None
+            by: Optional[List[str]] = None,
+            deduplicate_rows: bool = False
     ):
         self.starts_2_renamed = starts + suffix if starts == starts_2 else starts_2
         self.ends_2_renamed = ends + suffix if ends == ends_2 else ends_2
-        self.df = df
+        self.columns = df.columns
+        self.df = df if not deduplicate_rows else df.groupby(df.columns).agg([pl.all(), pl.count().alias(COUNT_PROPERTY)])
         self.df2 = df2
         self.starts = starts
         self.ends = ends
@@ -28,13 +30,13 @@ class GroupByJoinResult:
         self.by = by if self.groupby_args_given else [ROW_NUMBER_PROPERTY]
 
         if by is None:
-            sorted_collapsed = df.sort(starts, ends).select(pl.all().implode())
+            sorted_collapsed = self.df.sort(starts, ends).select(pl.all().implode())
             sorted_collapsed_2 = df2.sort(starts_2, ends_2).select(pl.all().implode())
             self.joined = sorted_collapsed.join(
                 sorted_collapsed_2, how="cross", suffix=suffix
             ).with_row_count(ROW_NUMBER_PROPERTY)
         else:
-            sorted_collapsed = df.sort(starts, ends).groupby(self.by).all()
+            sorted_collapsed = self.df.sort(starts, ends).groupby(self.by).all()
             sorted_collapsed_2 = df2.sort(starts_2, ends_2).groupby(self.by).all()
             self.joined = sorted_collapsed.join(sorted_collapsed_2, on=self.by, suffix=suffix)
 

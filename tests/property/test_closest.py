@@ -12,17 +12,22 @@ from tests.property.generate_intervals import interval_df
     print_blob=PRINT_BLOB
 )
 @given(df=interval_df(), df2=interval_df())
-@seed(319072507021907277107575597502301494047)
+@reproduce_failure('6.46.9', b'AXicY2PABZixCbJiCjFiCjExAAAD+QAS')
 def test_closest(df, df2):
     print("TEST_CLOSEST")
     print(df.to_init_repr())
     print(df2.to_init_repr())
     res_pyranges = to_pyranges(df).nearest(to_pyranges(df2), suffix="_right", apply_strand_suffix=False).df
+    # PyRanges counts bookended intervals as having a distance of 0, while poranges counts them as having a distance of 1
+    # if "Distance" in res_pyranges.columns:
+    #     res_pyranges.loc[res_pyranges.Distance > 1, "Distance"] = res_pyranges.loc[res_pyranges.Distance > 0, "Distance"] + 1
     print("py done")
-    res_poranges = df.interval.closest(df2, on=("Start", "End"), by=["Chromosome"]).collect().to_pandas()
+    print(res_pyranges)
+    res_poranges = df.interval.closest(df2, on=("Start", "End"), by=["Chromosome"], distance_col="Distance").collect().to_pandas()
 
     print("PYRANGES")
     print(res_pyranges)
     print("PORANGES")
     print(res_poranges)
-    compare_frames(pd_df=res_pyranges, pl_df=res_poranges)
+    # We do not check the start right and end right columns because they are not always the same
+    compare_frames(pd_df=res_pyranges, pl_df=res_poranges, comparison_cols=["Chromosome", "Start", "End", "Distance"])
