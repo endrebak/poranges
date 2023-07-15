@@ -71,8 +71,19 @@ class ClosestIntervals:
 
     def closest_nonoverlapping_left(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
+        sorted_on_other_end = self.j.joined.groupby(self.j.by).agg(
+            [
+                pl.exclude(self.j.ends_2_renamed),
+                pl.col(self.j.ends_2_renamed).explode()
+            ]
+        ).explode(self.j.ends_2_renamed).sort(self.j.ends_2_renamed).groupby(self.j.by).agg(
+            [
+                pl.exclude(self.j.ends_2_renamed).first().explode(),
+                pl.col(self.j.ends_2_renamed)
+            ]
+        )
         res = (
-            self.j.joined.groupby(self.j.by).agg(
+            sorted_on_other_end.groupby(self.j.by).agg(
                 pl.all().explode()
             )
             .groupby(self.j.by).agg(

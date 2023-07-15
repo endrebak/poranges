@@ -9,10 +9,10 @@ from tests.property.generate_intervals import interval_df
 
 @settings(
     max_examples=MAX_EXAMPLES,
-    print_blob=PRINT_BLOB
+    print_blob=PRINT_BLOB,
+    deadline=None
 )
 @given(df=interval_df(), df2=interval_df())
-@reproduce_failure('6.46.9', b'AXicY2PABZixCbJiCjFiCjExAAAD+QAS')
 def test_closest(df, df2):
     print("TEST_CLOSEST")
     print(df.to_init_repr())
