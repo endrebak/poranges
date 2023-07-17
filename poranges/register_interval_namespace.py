@@ -1,13 +1,14 @@
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Literal
 
 import polars as pl
 import poranges.ops
 from poranges.closest_intervals import ClosestIntervals
-from poranges.constants import DUMMY_SUFFIX_PROPERTY
+from poranges.constants import DUMMY_SUFFIX_PROPERTY, LEFT_DIRECTION_PROPERTY, RIGHT_DIRECTION_PROPERTY, COUNT_PROPERTY
 from poranges.overlapping_intervals import OverlappingIntervals
 from poranges.groupby_join_result import GroupByJoinResult
 
 
+@pl.api.register_lazyframe_namespace("interval")
 @pl.api.register_dataframe_namespace("interval")
 class IntervalFrame:
     def __init__(self, df: pl.DataFrame):
@@ -32,7 +33,7 @@ class IntervalFrame:
             result = OverlappingIntervals(
                 j=j,
                 closed_intervals=closed_intervals
-            ).overlaps()
+            ).overlapping_pairs()
 
         return result.drop([] if j.groupby_args_given else j.by)
 
@@ -67,8 +68,10 @@ class IntervalFrame:
             left_on: Optional[Tuple[str, str]] = None,
             suffix: str = "_right",
             k: int = 1,
+            include_overlapping: bool = True,
             distance_col: Optional[str] = None,
-            by: Optional[List[str]] = None
+            by: Optional[List[str]] = None,
+            direction: Literal["left", "right", "any"] = "any"
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
@@ -81,7 +84,8 @@ class IntervalFrame:
             ends_2=ends_2,
             suffix=suffix,
             by=by,
-            deduplicate_rows=True
+            deduplicate_rows=True,
+            grpby_join_how="left"
         )
         if j.empty():
             result = pl.LazyFrame(schema=j.joined.schema)
@@ -89,13 +93,19 @@ class IntervalFrame:
             result = ClosestIntervals(
                 j=j,
                 k=k,
-                distance_col=distance_col
+                distance_col=distance_col,
+                direction=direction,
+                include_overlapping=include_overlapping
             ).closest()
 
         print(result.collect())
 
         print(j.groupby_args_given, j.by)
-        return result.drop([] if j.groupby_args_given else j.by)
+        helper_cols = [COUNT_PROPERTY]
+        if not j.groupby_args_given:
+            helper_cols += j.by
+        print(helper_cols)
+        return result.drop(helper_cols)
 
     def merge(
             self: pl.DataFrame,

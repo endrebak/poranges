@@ -152,7 +152,7 @@ class OverlappingIntervals:
                 )
             ).explode(df_column_names_without_groupby_ks).drop_nulls()
         ).sort(grpby_ks)
-        # print("top_left\n", top_left.collect())
+        print("top_left\n", top_left.collect())
 
         bottom_left = (
             self.data
@@ -163,7 +163,7 @@ class OverlappingIntervals:
                 )
             ).explode(df_column_names_without_groupby_ks).drop_nulls()
         ).sort(grpby_ks)
-        # print("bottom_left\n", bottom_left.collect())
+        print("bottom_left\n", bottom_left.collect())
 
         top_right = (
             self.data
@@ -175,19 +175,9 @@ class OverlappingIntervals:
                 )
             ).explode(df_2_column_names_without_groupby_ks).drop_nulls()
         ).sort(grpby_ks)
+        print("top_right\n", top_right.collect())
 
-        # print(
-        #     self.data.groupby(grpby_ks).agg(
-        #         pl.col(
-        #             df_2_column_names_after_join + [
-        #                 STARTS_2IN1_PROPERTY,
-        #                 LENGTHS_2IN1_PROPERTY,
-        #             ]
-        #         ).explode()
-        #     ).collect()
-        # )
-        # print(df_2_column_names_after_join)
-        # print("top_right\n", top_right.collect())
+
         bottom_right = (
             self.data
             .filter(pl.col(MASK_1IN2_PROPERTY).list.any())
@@ -200,7 +190,7 @@ class OverlappingIntervals:
                 )
             ).explode(df_2_column_names_without_groupby_ks).drop_nulls()
         ).sort(grpby_ks)
-        # print("bottom_right\n", bottom_right.collect())
+        print(bottom_right.collect())
 
         # we cannot horizontally concat a lazy-frame, so we use with_context
         return pl.concat(
@@ -209,7 +199,7 @@ class OverlappingIntervals:
             pl.concat([top_right, bottom_right])
         ).select(
             pl.all()
-        ).drop([] if self.j.groupby_args_given else self.j.by)
+        )
 
     def overlaps(self):
         grpby_ks = self.j.by

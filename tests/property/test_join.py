@@ -1,6 +1,6 @@
 import poranges.register_interval_namespace
 
-from hypothesis import given, settings
+from hypothesis import given, settings, reproduce_failure
 
 from tests.property.helpers import to_pyranges, compare_frames
 from tests.property.hypothesis_settings import MAX_EXAMPLES, PRINT_BLOB

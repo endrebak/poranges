@@ -33,12 +33,12 @@ class ClosestIntervals:
     def closest(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
         if k > 0 and self.direction == LEFT_DIRECTION_PROPERTY:
-            _closest = self.closest_nonoverlapping_left(k=k)
+            _closest = self._closest_nonoverlapping_left(k=k)
         elif k > 0 and self.direction == RIGHT_DIRECTION_PROPERTY:
-            _closest = self.closest_nonoverlapping_right(k=k)
+            _closest = self._closest_nonoverlapping_right(k=k)
         elif k > 0 and self.direction == "any":
-            _left = self.closest_nonoverlapping_left(k=k)
-            _right = self.closest_nonoverlapping_right(k=k)
+            _left = self._closest_nonoverlapping_left(k=k)
+            _right = self._closest_nonoverlapping_right(k=k)
             print("LEFT\n", _left.collect())
             print("RIGHT\n", _right.collect())
             _closest = pl.concat([_left, _right])
@@ -58,7 +58,7 @@ class ClosestIntervals:
             _k_closest = pl.concat([overlaps, _closest]).sort(self.distance_col).groupby(self.j.columns).agg(
                 pl.all().head(k)
             ).explode(pl.exclude(self.j.columns)).select(
-                pl.exclude(COUNT_PROPERTY).repeat_by(pl.col(COUNT_PROPERTY)).explode()
+                pl.all().repeat_by(pl.col(COUNT_PROPERTY)).explode()
             )
             print("k ", k)
             print("k_closest")
@@ -69,7 +69,7 @@ class ClosestIntervals:
             _k_closest = _closest
         return _k_closest
 
-    def closest_nonoverlapping_left(self, k: Optional[int] = None) -> pl.LazyFrame:
+    def _closest_nonoverlapping_left(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
         sorted_on_other_end = self.j.joined.groupby(self.j.by).agg(
             [
@@ -147,7 +147,7 @@ class ClosestIntervals:
             ]
         )
 
-    def closest_nonoverlapping_right(self, k: Optional[int] = None) -> pl.LazyFrame:
+    def _closest_nonoverlapping_right(self, k: Optional[int] = None) -> pl.LazyFrame:
         k = self.k if k is None else k
         res = (
             self.j.joined.groupby(self.j.by).agg(

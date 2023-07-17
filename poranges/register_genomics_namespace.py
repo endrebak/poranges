@@ -1,11 +1,13 @@
-from typing import Optional, Tuple, List
+import dataclasses
+from typing import Optional, Tuple, List, Union
 
 import polars as pl
 import poranges.ops
 
 
-@pl.api.register_genomics_namespace("genomics")
-class IntervalFrame:
+@pl.api.register_lazyframe_namespace("genomics")
+@pl.api.register_dataframe_namespace("genomics")
+class GenomicsFrame:
     def __init__(self, df: pl.DataFrame):
         self._df = df
 
@@ -31,21 +33,60 @@ class IntervalFrame:
             suffix=suffix
         )
 
+    def overlaps(
+            self,
+            other: pl.DataFrame,
+            on: Optional[Union[Tuple[str, str, str], Tuple[str, str, str, str]]] = None,
+            left_on: Optional[Union[Tuple[str, str, str], Tuple[str, str, str, str]]] = None,
+            right_on: Optional[Union[Tuple[str, str, str], Tuple[str, str, str, str]]] = None,
+            by: Optional[List[str]] = None,
+            closed_intervals: bool = False
+    ) -> "GenomicsFrame":
+        starts, ends, starts_2, ends_2 = _get_genomic_coordinate_cols(on, right_on, left_on)
 
-def _get_interval_columns(
-        on: Optional[Tuple[str, str]] = None,
-        right_on: Optional[Tuple[str, str]] = None,
-        left_on: Optional[Tuple[str, str]] = None,
-) -> Tuple[str, str, str, str]:
+        return poranges.ops.overlaps(
+            left=self._df.lazy(),
+            right=other.lazy(),
+            starts=starts,
+            ends=ends,
+            starts_2=starts_2,
+            ends_2=ends_2,
+            by=by,
+            closed_intervals=closed_intervals
+        )
+
+
+def _get_genomic_coordinate_cols(
+        on: Optional[Union[Tuple[str, str, str], Tuple[str, str, str, str]]] = None,
+        left_on: Optional[Union[Tuple[str, str, str], Tuple[str, str, str, str]]] = None,
+        right_on: Optional[Union[Tuple[str, str, str], Tuple[str, str, str, str]]] = None,
+) -> "GenomicCoordinateCols":
     if on is None:
         if right_on is None or left_on is None:
-            raise ValueError(
-                "Either `on` or `right_on` and `left_on` must be specified."
-            )
-        starts, ends = left_on
-        starts_2, ends_2 = right_on
+            raise ValueError("Either `on` or `right_on` and `left_on` must be specified.")
+        if len(right_on) != len(left_on):
+            raise ValueError("`right_on` and `left_on` must have the same number of column names.")
+
+        if len(right_on) not in [3, 4]:
+            raise ValueError("`right_on` and `left_on` must have 3 or 4 column names.")
+
     else:
+        if len(on) not in [3, 4]:
+            raise ValueError("`right_on` and `left_on` must have 3 or 4 column names.")
+
         starts, ends = on
         starts_2, ends_2 = on
 
     return starts, ends, starts_2, ends_2
+
+
+@dataclasses.dataclass
+class GenomicCoordinateCols:
+    chromosome: str
+    starts: str
+    ends: str
+    chromosome2: str
+    starts2: str
+    ends2: str
+    strand: Optional[str] = None
+    strand2: Optional[str] = None

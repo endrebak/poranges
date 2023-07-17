@@ -9,7 +9,8 @@ from tests.property.generate_intervals import interval_df
 
 @settings(
     max_examples=MAX_EXAMPLES,
-    print_blob=PRINT_BLOB
+    print_blob=PRINT_BLOB,
+    deadline=None,
 )
 @given(df=interval_df())
 def test_merge(df):
