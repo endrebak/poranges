@@ -39,7 +39,7 @@ class GroupByJoinResult:
         else:
             sorted_collapsed = self.df.sort(starts, ends).groupby(self.by).all()
             sorted_collapsed_2 = df2.sort(starts_2, ends_2).groupby(self.by).all()
-            self.joined = sorted_collapsed.join(sorted_collapsed_2, on=self.by, suffix=suffix, how=grpby_join_how)
+            self.joined = sorted_collapsed.join(sorted_collapsed_2, left_on=self.by, right_on=self.by, suffix=suffix, how=grpby_join_how,)
 
     def empty(self) -> bool:
         at_least_one_df_empty = self.df.first().collect().shape[0] == 0 or self.df2.first().collect().shape[0] == 0
