@@ -1,5 +1,7 @@
 # poranges
 
+## This project is not ready for public consumption yet, but a beta will be out soon.
+
 Interval operations for polars.
 
 Interval operations can be used for any frame where the start and end columns representing the intervals are orderable and of the same type.

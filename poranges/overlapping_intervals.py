@@ -24,11 +24,32 @@ class OverlappingIntervals:
         grpby_ks = j.by
         self.j = j
         self.closed_intervals = closed_intervals
+        # print(grpby_ks * 20)
+        # print(
+        #     j.joined.groupby(grpby_ks).agg(
+        #         [pl.all().explode()] + self.find_starts_in_ends()
+        #     ).groupby(grpby_ks).agg(
+        #         [pl.all().explode()] + self.compute_masks()
+        #     )
+        #     .groupby(grpby_ks).agg(
+        #         [
+        #             pl.exclude(
+        #                 STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY,
+        #             ).explode()
+        #         ] + self.apply_masks()
+        #     )
+        #     .groupby(grpby_ks).agg(
+        #         [pl.all()] + self.add_lengths()
+        #     )
+        #     .explode(pl.exclude(grpby_ks))
+        #     .collect().to_pandas()
+        # )
+        # raise
 
         self.data = (
             j.joined.groupby(grpby_ks).agg(
                 [pl.all().explode()] + self.find_starts_in_ends()
-            )
+            ).inspect("starts_in_ends {}")
             .groupby(grpby_ks).agg(
                 [pl.all().explode()] + self.compute_masks()
             )
@@ -43,7 +64,6 @@ class OverlappingIntervals:
                 [pl.all()] + self.add_lengths()
             )
             .explode(pl.exclude(grpby_ks))
-
         )
 
     @staticmethod
@@ -204,24 +224,25 @@ class OverlappingIntervals:
     def overlaps(self):
         grpby_ks = self.j.by
         cols = self.j.colnames_without_groupby_ks()
+        print(self.data.collect().to_pandas())
         top_left = (
             self.data
             .groupby(grpby_ks).agg(
                 pl.col(cols).explode().filter(pl.col(MASK_2IN1_PROPERTY).explode()),
             ).explode(cols).drop_nulls()
         ).sort(grpby_ks)
+        print("top_left\n", top_left.collect())
 
         bottom_left = (
             self.data
             .groupby(grpby_ks).agg(
                 self.repeat_other(
                     columns=cols,
-                    starts=pl.col(STARTS_1IN2_PROPERTY).explode().filter(
-                        ~pl.col(STARTS_1IN2_PROPERTY).explode().is_duplicated()).explode(),
-                    diffs=pl.col(LENGTHS_1IN2_PROPERTY).explode().filter(
-                        ~pl.col(STARTS_1IN2_PROPERTY).explode().is_duplicated()).explode(),
+                    starts=pl.col(STARTS_1IN2_PROPERTY).explode(),
+                    diffs=pl.col(LENGTHS_1IN2_PROPERTY).explode(),
                 )
             ).explode(cols).drop_nulls()
         ).sort(grpby_ks)
+        print("bottom_left\n", bottom_left.collect())
 
         return pl.concat([top_left, bottom_left]).unique(keep="first")

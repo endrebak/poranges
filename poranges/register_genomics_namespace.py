@@ -46,20 +46,17 @@ class GenomicsFrame:
             closed_intervals: bool = False,
             strand_join: Literal["same", "opposite", "any"] = "any"
     ) -> "GenomicsFrame":
-        print(self)
-
-        print(other)
         coordinate_cols = GenomicCoordinateCols.from_ons(on, right_on, left_on)
-        print(coordinate_cols.strand_2_renamed(DUMMY_SUFFIX_PROPERTY))
 
         if strand_join in ["same", "opposite"]:
             if coordinate_cols.both_have_strands:
-                other = other.with_columns(
-                    pl.col(coordinate_cols.strand_2).map_dict(
-                        remapping={"+": "-", "-": "+"},
-                        default=".",
-                    ).keep_name(),
-                )
+                if strand_join == "opposite":
+                    other = other.with_columns(
+                        pl.col(coordinate_cols.strand_2).map_dict(
+                            remapping={"+": "-", "-": "+"},
+                            default=".",
+                        ).keep_name(),
+                    )
             else:
                 raise ValueError(
                     "Strand join is set to 'same' or 'opposite', but not both dataframes have strand columns."
@@ -75,6 +72,7 @@ class GenomicsFrame:
             suffix=DUMMY_SUFFIX_PROPERTY,
             by=coordinate_cols.by_columns() + by if by is not None else coordinate_cols.by_columns(),
         )
+        print(other)
         print(j.joined.collect())
         if j.empty():
             result = j.joined
@@ -83,13 +81,14 @@ class GenomicsFrame:
                 j=j,
                 closed_intervals=closed_intervals
             ).overlaps()
+            print(result.collect())
 
         if strand_join == "opposite":
             result = result.with_columns(
-                pl.col(coordinate_cols.strand_2_renamed(DUMMY_SUFFIX_PROPERTY)).map_dict(
+                pl.col(coordinate_cols.strand).map_dict(
                     remapping={"+": "-", "-": "+"},
                     default=".",
-                ).keep_name(),
+                ).alias(coordinate_cols.strand_2_renamed(DUMMY_SUFFIX_PROPERTY)),
             )
 
         return result.drop([] if j.groupby_args_given else j.by)
