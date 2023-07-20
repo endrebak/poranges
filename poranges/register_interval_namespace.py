@@ -26,7 +26,7 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, suffix, by)
+        j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, suffix, by, deduplicate_rows=True,)
         if j.empty():
             result = j.joined
         else:
@@ -48,7 +48,7 @@ class IntervalFrame:
     ):
         starts, ends, starts_2, ends_2 = _get_interval_columns(on, right_on, left_on)
 
-        j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, DUMMY_SUFFIX_PROPERTY, by)
+        j = GroupByJoinResult(self._df.lazy(), other.lazy(), starts, ends, starts_2, ends_2, DUMMY_SUFFIX_PROPERTY, by, deduplicate_rows=True,)
         if j.empty():
             result = j.joined
         else:

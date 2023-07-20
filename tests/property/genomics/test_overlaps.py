@@ -1,3 +1,6 @@
+import itertools
+
+import pytest
 from hypothesis import settings, given, reproduce_failure, seed
 
 from tests.property.generate_intervals import interval_df
@@ -12,10 +15,12 @@ import poranges.register_genomics_namespace
     print_blob=PRINT_BLOB,
     deadline=None
 )
+@pytest.mark.parametrize(
+    "strandedness",
+    ["same", "opposite"]
+)
 @given(df=interval_df(), df2=interval_df())
-def test_join(df, df2):
-    strandedness = "same"
-    strandedness = "opposite"
+def test_overlaps(df, df2, strandedness):
     print(df)
     print(df2)
     res_pyranges = to_pyranges(df).overlap(to_pyranges(df2), strandedness=strandedness).df

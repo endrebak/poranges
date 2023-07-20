@@ -3,7 +3,7 @@ from typing import Optional, Tuple, List, Union, Literal
 
 import polars as pl
 import poranges.ops
-from poranges.constants import DUMMY_SUFFIX_PROPERTY
+from poranges.constants import DUMMY_SUFFIX_PROPERTY, COUNT_PROPERTY
 from poranges.groupby_join_result import GroupByJoinResult
 from poranges.overlapping_intervals import OverlappingIntervals
 
@@ -71,9 +71,8 @@ class GenomicsFrame:
             ends_2=coordinate_cols.ends_2,
             suffix=DUMMY_SUFFIX_PROPERTY,
             by=coordinate_cols.by_columns() + by if by is not None else coordinate_cols.by_columns(),
+            deduplicate_rows=True,
         )
-        print(other)
-        print(j.joined.collect())
         if j.empty():
             result = j.joined
         else:
@@ -81,7 +80,6 @@ class GenomicsFrame:
                 j=j,
                 closed_intervals=closed_intervals
             ).overlaps()
-            print(result.collect())
 
         if strand_join == "opposite":
             result = result.with_columns(
@@ -90,6 +88,8 @@ class GenomicsFrame:
                     default=".",
                 ).alias(coordinate_cols.strand_2_renamed(DUMMY_SUFFIX_PROPERTY)),
             )
+
+        print(result.collect())
 
         return result.drop([] if j.groupby_args_given else j.by)
 

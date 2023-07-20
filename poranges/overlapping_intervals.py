@@ -3,7 +3,7 @@ from typing import List, Literal, TYPE_CHECKING, Optional
 import polars as pl
 
 from poranges.constants import STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY, STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, \
-    MASK_2IN1_PROPERTY, MASK_1IN2_PROPERTY, LENGTHS_2IN1_PROPERTY, LENGTHS_1IN2_PROPERTY
+    MASK_2IN1_PROPERTY, MASK_1IN2_PROPERTY, LENGTHS_2IN1_PROPERTY, LENGTHS_1IN2_PROPERTY, COUNT_PROPERTY
 from poranges.ops import search, add_length
 
 if TYPE_CHECKING:
@@ -19,32 +19,12 @@ class OverlappingIntervals:
     def __init__(
             self,
             j: "GroupByJoinResult",
-            closed_intervals: bool = False,
+            closed_intervals: bool = False
     ) -> None:
+        assert COUNT_PROPERTY in j.joined.columns, str(j.joined.columns)
         grpby_ks = j.by
         self.j = j
         self.closed_intervals = closed_intervals
-        # print(grpby_ks * 20)
-        # print(
-        #     j.joined.groupby(grpby_ks).agg(
-        #         [pl.all().explode()] + self.find_starts_in_ends()
-        #     ).groupby(grpby_ks).agg(
-        #         [pl.all().explode()] + self.compute_masks()
-        #     )
-        #     .groupby(grpby_ks).agg(
-        #         [
-        #             pl.exclude(
-        #                 STARTS_1IN2_PROPERTY, ENDS_1IN2_PROPERTY, STARTS_2IN1_PROPERTY, ENDS_2IN1_PROPERTY,
-        #             ).explode()
-        #         ] + self.apply_masks()
-        #     )
-        #     .groupby(grpby_ks).agg(
-        #         [pl.all()] + self.add_lengths()
-        #     )
-        #     .explode(pl.exclude(grpby_ks))
-        #     .collect().to_pandas()
-        # )
-        # raise
 
         self.data = (
             j.joined.groupby(grpby_ks).agg(
@@ -67,7 +47,14 @@ class OverlappingIntervals:
         )
 
     @staticmethod
-    def lengths(starts: str, ends: str, outname: str = "") -> pl.Expr:
+    def explode_by_repeats(lf: pl.LazyFrame) -> pl.LazyFrame:
+        # We need the groupby and first here likely due to #9729: https://github.com/pola-rs/polars/issues/9729
+        return lf.groupby(pl.all()).first().select(
+            pl.exclude(COUNT_PROPERTY).repeat_by(pl.col(COUNT_PROPERTY).explode())
+        ).explode(pl.all())
+
+    @staticmethod
+    def lengths(starts: str, ends: str, outname: str = "",) -> pl.Expr:
         return pl.col(ends).explode().sub(pl.col(starts).explode()).explode().alias(outname)
 
     def find_starts_in_ends(self) -> List[pl.Expr]:
@@ -115,7 +102,7 @@ class OverlappingIntervals:
         )
 
     @staticmethod
-    def repeat_frame(columns, startsin, endsin) -> pl.Expr:
+    def repeat_frame(columns, startsin, endsin,) -> pl.Expr:
         return (
             pl.col(columns)
             .explode()
@@ -124,7 +111,7 @@ class OverlappingIntervals:
         )
 
     @staticmethod
-    def mask_and_repeat_frame(columns, mask, startsin, endsin) -> pl.Expr:
+    def mask_and_repeat_frame(columns, mask, startsin, endsin,) -> pl.Expr:
         return (
             pl.col(columns).explode()
             .filter(pl.col(mask).explode())
@@ -138,7 +125,7 @@ class OverlappingIntervals:
         )
 
     @staticmethod
-    def repeat_other(columns, starts, diffs):
+    def repeat_other(columns, starts, diffs,):
         return (
             pl.col(columns)
             .explode()
@@ -213,18 +200,21 @@ class OverlappingIntervals:
         print(bottom_right.collect())
 
         # we cannot horizontally concat a lazy-frame, so we use with_context
-        return pl.concat(
-            [top_left, bottom_left]
-        ).with_context(
-            pl.concat([top_right, bottom_right])
-        ).select(
-            pl.all()
+        return self.explode_by_repeats(
+            pl.concat(
+                [top_left, bottom_left]
+            ).with_context(
+                pl.concat([top_right, bottom_right])
+            ).select(
+                pl.all()
+            )
         )
 
     def overlaps(self):
         grpby_ks = self.j.by
         cols = self.j.colnames_without_groupby_ks()
         print(self.data.collect().to_pandas())
+        print(self.data.columns)
         top_left = (
             self.data
             .groupby(grpby_ks).agg(
@@ -232,6 +222,8 @@ class OverlappingIntervals:
             ).explode(cols).drop_nulls()
         ).sort(grpby_ks)
         print("top_left\n", top_left.collect())
+        print("top_left\n", top_left.collect().to_pandas())
+        print("top_left\n", top_left.columns)
 
         bottom_left = (
             self.data
@@ -244,5 +236,9 @@ class OverlappingIntervals:
             ).explode(cols).drop_nulls()
         ).sort(grpby_ks)
         print("bottom_left\n", bottom_left.collect())
+        print("bottom_left\n", bottom_left.collect().to_pandas())
+        print("bottom_left\n", bottom_left.columns)
 
-        return pl.concat([top_left, bottom_left]).unique(keep="first")
+        return self.explode_by_repeats(
+            pl.concat([top_left, bottom_left])
+        ).inspect("HOOO {}")
